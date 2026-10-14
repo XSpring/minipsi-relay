@@ -19,6 +19,10 @@ make fuzz-smoke
 docker build -t minipsi .   # distroless image
 ```
 
+CI (`.github/workflows/ci.yml`) runs these on every push to `main` and every pull request:
+lint, race tests, govulncheck, generated-code check, end-to-end, fuzz smoke and the
+container build.
+
 ## Quickstart on one machine
 
 `--dev` creates throw-away test certificates on first use and only allows loopback addresses.
