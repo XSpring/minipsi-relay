@@ -1,0 +1,20 @@
+# build outputs
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+# local runtime artifacts
+/certs/
+*.pem
+*.key
+report*.json
+# fuzz corpora caches (testdata/fuzz is committed)
+/.cache/
+# editors
+.idea/
+.vscode/
+*.swp
+
+# local Claude Code settings
+.claude/settings.local.json

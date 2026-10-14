@@ -1,0 +1,6 @@
+bin/
+certs/
+*.pem
+*.key
+report*.json
+.git/

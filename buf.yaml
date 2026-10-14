@@ -1,0 +1,17 @@
+version: v2
+modules:
+  - path: api
+lint:
+  use:
+    - STANDARD
+  # The protocol is a single symmetric bidi stream of one Frame type in both directions
+  # (roles are carried in Hello), so the request/response naming rules and the
+  # service suffix rule do not apply.
+  except:
+    - SERVICE_SUFFIX
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    - RPC_REQUEST_RESPONSE_UNIQUE
+breaking:
+  use:
+    - FILE

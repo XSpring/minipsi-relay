@@ -1,0 +1,92 @@
+// Wire protocol of minipsi. Protocol version 1.
+syntax = "proto3";
+
+package minipsi.v1;
+
+option go_package = "github.com/XSpring/minipsi/internal/gen/minipsiv1;minipsiv1";
+
+// PSI carries one session as a symmetric bidirectional frame stream; the roles are
+// announced in Hello, so either role may be the gRPC client or server.
+service PSI {
+  rpc Session(stream Frame) returns (stream Frame);
+}
+
+message Frame {
+  oneof body {
+    Hello hello = 1;
+    SenderKeys sender_keys = 2; // S → R
+    PolyChunk poly_chunk = 3; // R → S
+    OutputChunk output_chunk = 4; // S → R
+    Done done = 5; // both
+    SizesChunk sizes_chunk = 6; // both, after Hello
+    Abort abort = 15; // both
+  }
+}
+
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_SENDER = 1;
+  ROLE_RECEIVER = 2;
+}
+
+enum HashAlg {
+  HASH_ALG_UNSPECIFIED = 0;
+  HASH_ALG_SHA256 = 1;
+  HASH_ALG_AES = 2;
+}
+
+message Hello {
+  uint32 protocol_version = 1;
+  string suite = 2;
+  Role role = 3;
+  HashAlg hash = 4;
+  uint32 lambda = 5;
+  bytes nonce = 6; // 32 random bytes
+  uint32 instance_count = 7; // sizes follow in SizesChunk frames
+  string software_version = 8; // informational
+}
+
+// Parallel arrays; IDs strictly increasing over the concatenation of all chunks. The
+// sender announces n1_b, the receiver its padded point count m_b.
+message InstanceSizes {
+  repeated uint32 ids = 1 [packed = true];
+  repeated uint32 sizes = 2 [packed = true];
+}
+
+message SizesChunk {
+  InstanceSizes sizes = 1;
+}
+
+message SenderKeys {
+  uint32 first_instance_index = 1; // index into the sorted instance list
+  bytes keys = 2; // concatenated 32-byte Edwards encodings
+}
+
+message PolyPart {
+  uint32 instance_id = 1;
+  uint32 offset = 2; // index of the first coefficient in this part
+  bytes coeffs = 3; // concatenated 32-byte little-endian canonical field elements
+}
+
+message PolyChunk {
+  repeated PolyPart parts = 1;
+}
+
+message OutputPart {
+  uint32 instance_id = 1;
+  bytes values = 2; // concatenated ℓ_out-byte strings (permuted order)
+}
+
+message OutputChunk {
+  repeated OutputPart parts = 1;
+}
+
+message Done {
+  uint64 frames_sent = 1;
+  bytes transcript_digest = 2;
+}
+
+message Abort {
+  uint32 code = 1;
+  string message = 2;
+}
