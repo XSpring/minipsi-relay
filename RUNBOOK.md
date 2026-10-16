@@ -97,7 +97,7 @@ memory limit.
 
 - cron / systemd timer / Kubernetes Job: start the listener first or give the dialer a
   generous `--connect-retry`; use `--timeout` to bound the whole run.
-- Example systemd unit (oneshot): `ExecStart=/usr/local/bin/minipsi --config /etc/minipsi/sender.yaml`,
+- Example systemd unit (oneshot): `ExecStart=/usr/local/bin/minipsi sender --config /etc/minipsi/sender.yaml`,
   `Type=oneshot`, `User=minipsi`, `LimitCORE=0`, `ProtectSystem=strict`,
   `ReadWritePaths=/data /var/log/minipsi`, `MemoryMax=` ≥ memory-limit × 1.3.
 
