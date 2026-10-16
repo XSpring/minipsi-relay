@@ -27,6 +27,15 @@ Run the tests that cover your change before you push. CI must pass before a merg
 - Use plain ASCII in branch names, commit messages, and pull request and issue titles and
   bodies: no emoji, no arrows or other symbols.
 
+## Agent attribution
+
+Commits and pull requests made with an AI agent follow these rules:
+
+- End the commit message and the pull request body with this line, after a blank line:
+  `Supported by minipsi-relay agent`
+- Never add tool attribution such as `Generated with Claude Code`, or a `Co-Authored-By:`
+  trailer for an AI model.
+
 ## Branches
 
 Format: `<module>/<feature>`
@@ -49,6 +58,7 @@ Format: `<type>(<module>): <summary>`
 - Example: `feat(api): add session api`.
 - Add a body after a blank line when the reason for the change is not obvious.
 - Keep one logical change per commit.
+- Never amend or force-push a commit that is already pushed. Make the fix in a new commit.
 
 ## Pull requests
 

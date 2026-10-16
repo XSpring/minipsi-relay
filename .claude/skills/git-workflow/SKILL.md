@@ -20,25 +20,31 @@ Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
    relevant) and fix failures first.
 2. Stage only the files of this change: `git add <files>`.
 3. Commit with `<type>(<module>): <summary>`, where type is one of feat, fix, docs, refactor,
-   test, perf, build, ci, chore:
+   test, perf, build, ci, chore. End the message with the line
+   `Supported by minipsi-relay agent`. Never add `Generated with Claude Code` or a
+   `Co-Authored-By:` trailer for an AI model:
 
    ```bash
-   git commit -m "feat(api): add session api"
+   git commit -m "feat(api): add session api" -m "Supported by minipsi-relay agent"
    ```
 
-4. Check the subject line before pushing:
+4. Check the message before pushing:
 
    ```bash
    git log -1 --format=%s | grep -Eq '^(feat|fix|docs|refactor|test|perf|build|ci|chore)\([a-z0-9-]+\): [a-z0-9].*[^.]$' \
      && [ "$(git log -1 --format=%s | wc -c)" -le 73 ] && echo "subject ok"
    git log -1 --format=%B | LC_ALL=C grep -nP '[^\x00-\x7F]' && echo "non-ASCII found" || echo "ascii ok"
+   git log -1 --format=%B | sed '/^$/d' | tail -1 | grep -qx 'Supported by minipsi-relay agent' && echo "footer ok"
+   git log -1 --format=%B | grep -Eiq 'generated with \[?(claude|chatgpt|copilot|cursor)|co-authored-by:.*(claude|anthropic|openai|gpt|copilot)' \
+     && echo "remove the tool attribution" || echo "no tool attribution"
    ```
 
 ## 3. Pull request
 
 1. Push the branch: `git push -u origin <module>/<feature>`.
 2. Write the body with the sections of .github/pull_request_template.md: Summary, Changes,
-   Testing, Related issues.
+   Testing, Related issues. End it with the line `Supported by minipsi-relay agent`, with no
+   tool attribution.
 3. Create the pull request against main with the commit format as title:
 
    ```bash
@@ -63,5 +69,8 @@ Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
 
 - The branch is `<module>/<feature>` and starts from an up-to-date main.
 - Every commit subject matches `<type>(<module>): <summary>`.
+- No pushed commit was amended or force-pushed; fixes are new commits.
 - Tests for the change pass.
 - Titles and bodies are English and plain ASCII.
+- Commit messages and pull request bodies end with `Supported by minipsi-relay agent` and
+  contain no `Generated with Claude Code` or AI `Co-Authored-By:` lines.
