@@ -175,24 +175,59 @@ Format: `<type>(<module>): <summary>`
 
 ## Pull requests
 
-- Title: the commit format, `<type>(<module>): <summary>`.
-- Base branch: main.
-- Body: all sections of .github/pull_request_template.md, written so that a reviewer can
-  understand the change without reconstructing it from the diff:
-  - Summary: what changed and why.
-  - Implementation details: how it works and the key technical decisions.
-  - Changes: the functionality, files, packages, flags or behaviour added, changed or removed.
-  - Verification: the commands run and their results, plus manual checks.
-  - Test coverage: the scenarios and edge cases tested.
-  - Limitations and risks: known issues, untested behaviour, possible regressions, open work.
-  - Related issues: `Closes #<number>` and any differences from the plan.
-- Report only checks that were actually run. List any check that could not be run, and why,
-  separately from the completed ones. Never write that tests pass without running them.
-- Before opening the pull request, review the whole diff (`git diff origin/main...HEAD`),
-  run the verification from the plan, and check that the plan still matches the change.
-- Keep each pull request focused; split unrelated changes into separate pull requests.
-- Write `Closes #<number>` when the pull request resolves an issue.
+- Title: the commit format, `<type>(<module>): <summary>`. Base branch: main.
 - Merge only after CI passes and a reviewer approves.
+
+### Description
+
+Every pull request explains what changed, why, how it was implemented and how it was verified,
+so that a reviewer understands it without reconstructing it from the code or the commits. Use
+the sections of .github/pull_request_template.md, in this order:
+
+- Summary: what the pull request accomplishes, and the problem or goal behind it.
+- Changes: the specific changes; the affected files, packages, flags, APIs or behaviour; the
+  functional impact of each significant change.
+- Implementation details: how it works, the approach and key technical decisions, how the
+  changed components interact, trade-offs, and deviations from the plan in the issue.
+- Verification: the tests, commands, static analysis and manual checks actually performed,
+  with their results and whether they meet expectations; then, separately, the untested
+  scenarios and the checks that could not be run, with the reasons. For documentation-only
+  changes, the applicable checks (links, source references, formatting, consistency).
+- Dependencies and related work: `Closes #<number>` for the issue with the plan, related pull
+  requests and specifications, and anything that blocks the merge. Omit when not relevant.
+- Limitations and risks: known issues, assumptions, security or compatibility concerns,
+  remaining work. Write None when there are none.
+
+### Quality rules
+
+1. Be specific: never just "fixed bugs", "updated code" or "improved performance"; say what
+   changed.
+2. Provide evidence: report actual results. Never claim that tests passed or checks were done
+   unless they were run; disclose failed, skipped and unavailable checks.
+3. Keep the scope focused: one coherent task per pull request, following Short-lived
+   branches; split unrelated changes into separate pull requests.
+4. Keep the description accurate: update it whenever the implementation or the verification
+   results change, for example after new commits.
+5. Make the review self-contained: give enough context to review without reading the whole
+   implementation or commit history.
+6. Scale the detail: a small fix may be short; a complex change needs more implementation and
+   verification detail.
+7. Keep implementation and verification apart: what was built goes under Changes and
+   Implementation details, what was checked goes under Verification.
+8. Follow the template: extend .github/pull_request_template.md rather than introducing a
+   different structure.
+
+### Before opening or updating a pull request (AI agents and people)
+
+1. Re-read the task and the plan in its issue.
+2. Review the whole diff (`git diff origin/main...HEAD`) and check that it matches the
+   intended scope; update the plan if it changed.
+3. Run the relevant tests and checks from the verification plan.
+4. Write or update the description with the sections above, based on the actual diff and
+   results, not on intentions.
+5. State clearly any check that failed, was skipped or could not be run.
+
+Never open a pull request with an empty, generic or misleading description.
 
 ## Issues
 

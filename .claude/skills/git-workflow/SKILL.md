@@ -55,14 +55,16 @@ Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
 
 ## 3. Pull request
 
-1. Review the whole diff (`git diff origin/main...HEAD`), run the verification plan, and
-   check that the change still matches the plan in the issue (update the issue if not).
+1. Follow "Before opening or updating a pull request" in AGENTS.md: re-read the task and the
+   plan, review the whole diff (`git diff origin/main...HEAD`) against the scope, and run the
+   verification plan.
 2. Push the branch: `git push -u origin <module>/<feature>`.
-3. Write the body with every section of .github/pull_request_template.md: Summary,
-   Implementation details, Changes, Verification, Test coverage, Limitations and risks,
-   Related issues. Under Verification, list only checks you actually ran, with commands and
-   results, and list separately the checks you could not run and why. End the body with the
-   line `Supported by minipsi-relay agent`, with no tool attribution.
+3. Write the body with the sections of .github/pull_request_template.md (Summary, Changes,
+   Implementation details, Verification, Dependencies and related work, Limitations and
+   risks) and the quality rules in AGENTS.md. Under Verification, list only checks you
+   actually ran, with commands and results, and separately the checks that failed, were
+   skipped or could not be run. End the body with the line
+   `Supported by minipsi-relay agent`, with no tool attribution.
 4. Create the pull request against main with the commit format as title:
 
    ```bash
@@ -71,6 +73,8 @@ Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
    ```
 
 5. Return the pull request URL that gh prints.
+6. After new commits or new verification results, update the body:
+   `gh pr edit <number> --body-file /path/to/body.md`.
 
 ## 4. Issue
 
@@ -92,8 +96,9 @@ Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
 - No pushed commit was amended or force-pushed; fixes are new commits.
 - The plan is in the task's issue and matches the change.
 - Tests for the change pass.
-- The pull request body has every template section; Verification lists only checks that
-  were run and names the ones that were not.
+- The pull request body follows the template and the quality rules in AGENTS.md, matches the
+  final diff, and its Verification lists only checks that were run and names the ones that
+  were not.
 - Titles and bodies are English and plain ASCII.
 - Commit messages and pull request bodies end with `Supported by minipsi-relay agent` and
   contain no `Generated with Claude Code` or AI `Co-Authored-By:` lines.
