@@ -112,6 +112,28 @@ Commits and pull requests made with an AI agent follow these rules:
 - Never add tool attribution such as `Generated with Claude Code`, or a `Co-Authored-By:`
   trailer for an AI model.
 
+## Planning
+
+Write the plan before writing or changing code. Do not start implementing until it exists.
+
+- Where: the GitHub issue of the task. Every branch has one issue. For a feature request, fill
+  in the plan sections of the template. For a bug report, add the plan as a comment with the
+  same sections. A large task gets a parent issue that lists its sub-tasks, and each sub-task
+  gets its own issue and plan (see Short-lived branches).
+- Content:
+  - Objective: what needs to be done and why.
+  - Scope: what is included and what is not.
+  - Approach: how it will be implemented.
+  - Affected components: files, packages, flags, wire format or docs that may change.
+  - Acceptance criteria: the conditions for the task to be complete.
+  - Verification plan: the tests and checks that will prove it (see Build and test).
+- Keep the plan current: when the scope or the approach changes, edit the issue first and
+  say what changed.
+- AI agents: read this file and the relevant docs/ first, show the plan to the user, create or
+  update the issue with it (`gh issue create`, `gh issue edit`), and only then write code.
+  Without GitHub access, give the plan to the user in the conversation and ask them to
+  confirm it.
+
 ## Branches
 
 Format: `<module>/<feature>`
@@ -155,8 +177,19 @@ Format: `<type>(<module>): <summary>`
 
 - Title: the commit format, `<type>(<module>): <summary>`.
 - Base branch: main.
-- Body: the sections of .github/pull_request_template.md (Summary, Changes, Testing, Related
-  issues).
+- Body: all sections of .github/pull_request_template.md, written so that a reviewer can
+  understand the change without reconstructing it from the diff:
+  - Summary: what changed and why.
+  - Implementation details: how it works and the key technical decisions.
+  - Changes: the functionality, files, packages, flags or behaviour added, changed or removed.
+  - Verification: the commands run and their results, plus manual checks.
+  - Test coverage: the scenarios and edge cases tested.
+  - Limitations and risks: known issues, untested behaviour, possible regressions, open work.
+  - Related issues: `Closes #<number>` and any differences from the plan.
+- Report only checks that were actually run. List any check that could not be run, and why,
+  separately from the completed ones. Never write that tests pass without running them.
+- Before opening the pull request, review the whole diff (`git diff origin/main...HEAD`),
+  run the verification from the plan, and check that the plan still matches the change.
 - Keep each pull request focused; split unrelated changes into separate pull requests.
 - Write `Closes #<number>` when the pull request resolves an issue.
 - Merge only after CI passes and a reviewer approves.
@@ -172,8 +205,8 @@ Format: `<type>(<module>): <summary>`
 
 ## Agent workflow
 
-The skill in .claude/skills/git-workflow/SKILL.md walks an agent through branches, commits,
-pull requests and issues with these rules.
+The skill in .claude/skills/git-workflow/SKILL.md walks an agent through planning, branches,
+commits, pull requests and issues with these rules.
 
 ## Open questions
 

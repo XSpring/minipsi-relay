@@ -23,3 +23,8 @@ labels: bug
 
 ```text
 ```
+
+<!-- Whoever fixes the bug adds the plan as a comment before changing code, with the sections
+     Objective, Scope, Approach, Affected components, Acceptance criteria and Verification plan
+     (see Planning in AGENTS.md). -->
+

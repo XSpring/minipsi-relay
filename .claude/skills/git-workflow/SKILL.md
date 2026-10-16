@@ -1,11 +1,21 @@
 ---
 name: git-workflow
-description: Create branches, commits, pull requests and issues for this repository following the project rules in AGENTS.md. Use when asked to commit, push, open a pull request or file an issue.
+description: Write the task plan, then create branches, commits, pull requests and issues for this repository following the project rules in AGENTS.md. Use before starting a task and when asked to commit, push, open a pull request or file an issue.
 ---
 
 # Git workflow
 
 Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
+
+## 0. Plan
+
+1. Read AGENTS.md and the docs/ files for the area you will change.
+2. Write the plan (Objective, Scope, Approach, Affected components, Acceptance criteria,
+   Verification plan; see Planning in AGENTS.md), show it to the user, and put it in the
+   task's issue: the plan sections of the feature request template, or a comment on a bug
+   report (`gh issue edit <number> --body-file plan.md` or `gh issue comment`).
+3. Do not write code before the plan exists. When the scope or approach changes, update the
+   issue first.
 
 ## 1. Branch
 
@@ -45,18 +55,22 @@ Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
 
 ## 3. Pull request
 
-1. Push the branch: `git push -u origin <module>/<feature>`.
-2. Write the body with the sections of .github/pull_request_template.md: Summary, Changes,
-   Testing, Related issues. End it with the line `Supported by minipsi-relay agent`, with no
-   tool attribution.
-3. Create the pull request against main with the commit format as title:
+1. Review the whole diff (`git diff origin/main...HEAD`), run the verification plan, and
+   check that the change still matches the plan in the issue (update the issue if not).
+2. Push the branch: `git push -u origin <module>/<feature>`.
+3. Write the body with every section of .github/pull_request_template.md: Summary,
+   Implementation details, Changes, Verification, Test coverage, Limitations and risks,
+   Related issues. Under Verification, list only checks you actually ran, with commands and
+   results, and list separately the checks you could not run and why. End the body with the
+   line `Supported by minipsi-relay agent`, with no tool attribution.
+4. Create the pull request against main with the commit format as title:
 
    ```bash
    gh pr create --base main --head <module>/<feature> \
      --title "<type>(<module>): <summary>" --body-file /path/to/body.md
    ```
 
-4. Return the pull request URL that gh prints.
+5. Return the pull request URL that gh prints.
 
 ## 4. Issue
 
@@ -76,7 +90,10 @@ Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
   changes are in other branches.
 - Every commit subject matches `<type>(<module>): <summary>`.
 - No pushed commit was amended or force-pushed; fixes are new commits.
+- The plan is in the task's issue and matches the change.
 - Tests for the change pass.
+- The pull request body has every template section; Verification lists only checks that
+  were run and names the ones that were not.
 - Titles and bodies are English and plain ASCII.
 - Commit messages and pull request bodies end with `Supported by minipsi-relay agent` and
   contain no `Generated with Claude Code` or AI `Co-Authored-By:` lines.
