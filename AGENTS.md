@@ -123,6 +123,21 @@ Format: `<module>/<feature>`
   `agents/project-rules`.
 - Branch from an up-to-date main. Never commit directly to main.
 
+### Short-lived branches
+
+- A branch goes from creation to an open pull request, and then to merge, within 24-48 hours.
+  This is a maximum, not a target: open the pull request as soon as the task is done.
+- One branch holds the smallest task that can be implemented, tested and reviewed on its own.
+- If a task cannot be finished within 24-48 hours, split it into smaller tasks first, each with
+  its own branch and pull request. Every step must leave main building with tests passing.
+- Do not mix unrelated features, fixes or refactoring in one branch. Anything the task does not
+  need goes into a separate branch.
+- Finish the change, run the tests that cover it, push and open the pull request early. Do not
+  leave a branch idle; merge it or close it.
+- AI agents: before writing code, estimate the scope of the task. If it does not fit into one
+  short-lived branch, propose a breakdown (tasks, order, branch names) and wait for agreement
+  before implementing.
+
 ## Commits
 
 Format: `<type>(<module>): <summary>`

@@ -9,10 +9,14 @@ Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
 
 ## 1. Branch
 
-1. Update main: `git fetch origin`.
-2. Pick the module (a package under internal/, or api, docs, ci, build, agents) and a short
+1. Check the scope (short-lived branches, see AGENTS.md): the task must be one small change
+   that can be implemented, tested, reviewed and merged within 24-48 hours. If it is larger,
+   propose a breakdown into smaller tasks, each with its own branch, and wait for agreement
+   before writing code.
+2. Update main: `git fetch origin`.
+3. Pick the module (a package under internal/, or api, docs, ci, build, agents) and a short
    kebab-case feature name.
-3. Create the branch: `git switch -c <module>/<feature> origin/main`.
+4. Create the branch: `git switch -c <module>/<feature> origin/main`.
 
 ## 2. Commit
 
@@ -68,6 +72,8 @@ Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
 ## Checklist
 
 - The branch is `<module>/<feature>` and starts from an up-to-date main.
+- The branch holds one small task and is ready for a pull request within 24-48 hours; unrelated
+  changes are in other branches.
 - Every commit subject matches `<type>(<module>): <summary>`.
 - No pushed commit was amended or force-pushed; fixes are new commits.
 - Tests for the change pass.
