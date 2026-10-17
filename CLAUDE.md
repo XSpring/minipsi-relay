@@ -17,4 +17,4 @@ git-workflow skill in .claude/skills/git-workflow.
   `$(go env GOPATH)/bin`; ask before installing them.
 - When running the CLI by hand, use `--dev` with `MINIPSI_DEV_PKI` set to a temporary directory,
   loopback addresses, and stop any background `serve` or `sender` process afterwards.
-- `old_plan/` is a local, gitignored folder and not part of the product.
+- `old_plan/` is a local folder and not part of the product; never commit it (stage files by name, not with `git add -A` or `git add .`).

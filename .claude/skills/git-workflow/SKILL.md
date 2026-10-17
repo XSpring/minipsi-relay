@@ -13,7 +13,7 @@ Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
 2. Write the plan (Objective, Scope, Approach, Affected components, Acceptance criteria,
    Verification plan; see Planning in AGENTS.md), show it to the user, and put it in the
    task's issue: the plan sections of the feature request template, or a comment on a bug
-   report (`gh issue edit <number> --body-file plan.md` or `gh issue comment`).
+   report. If the task has no issue yet, create it first as in section 4 (`gh issue create`). To add the plan, edit the full issue body with the plan sections filled in (`gh issue edit <number> --body-file body.md`; the file replaces the whole body), or for a bug report add it as a comment (`gh issue comment <number> --body-file plan.md`).
 3. Do not write code before the plan exists. When the scope or approach changes, update the
    issue first.
 
@@ -46,9 +46,9 @@ Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
 
    ```bash
    git log -1 --format=%s | grep -Eq '^(feat|fix|docs|refactor|test|perf|build|ci|chore)\([a-z0-9-]+\): [a-z0-9].*[^.]$' \
-     && [ "$(git log -1 --format=%s | wc -c)" -le 73 ] && echo "subject ok"
+     && [ "$(git log -1 --format=%s | wc -c)" -le 73 ] && echo "subject ok" || echo "subject bad"
    git log -1 --format=%B | LC_ALL=C grep -nP '[^\x00-\x7F]' && echo "non-ASCII found" || echo "ascii ok"
-   git log -1 --format=%B | sed '/^$/d' | tail -1 | grep -qx 'Supported by minipsi-relay agent' && echo "footer ok"
+   git log -1 --format=%B | sed '/^$/d' | tail -1 | grep -qx 'Supported by minipsi-relay agent' && echo "footer ok" || echo "footer missing"
    git log -1 --format=%B | grep -Eiq 'generated with \[?(claude|chatgpt|copilot|cursor)|co-authored-by:.*(claude|anthropic|openai|gpt|copilot)' \
      && echo "remove the tool attribution" || echo "no tool attribution"
    ```

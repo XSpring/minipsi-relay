@@ -39,6 +39,7 @@ when behaviour, flags, configuration or architecture change.
 | Flags, YAML keys, environment variables | docs/CONFIGURATION.md |
 | Tooling, tests, CI, pitfalls | docs/DEVELOPMENT.md |
 | gRPC, TLS, filesystem and other integrations | docs/INTEGRATIONS.md |
+| Known gaps and open questions for a new API on the PSI core (relay, seam, errors) | docs/ANALYSIS_GAPS.md |
 | Architecture decisions | docs/decisions/README.md |
 | Deployment and operations | RUNBOOK.md |
 
