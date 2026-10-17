@@ -85,6 +85,7 @@ flowchart TD
   report --> itemio
   transport --> gen["internal/gen/minipsiv1: generated"]
   transport --> protocol
+  transport -->|"hashing.Alg only"| math
   protocol --> math["math core: poly, rns, ntt, field, group, elligator, hashing, parallel"]
   protocol --> version
   subgraph thirdparty ["third-party libraries"]
@@ -99,6 +100,7 @@ flowchart TD
   transport --> grpc
   gen --> grpc
   math --> ed
+  protocol --> ed
   math --> lat
 ```
 
@@ -197,13 +199,14 @@ Each row is one execution path or trigger. Paths that several tracers reported w
 | e2e `TestMain` and the process tests (build tag `e2e`) | test-only | `go test -tags e2e ./test/e2e` (`make e2e`) | test/e2e/e2e_test.go:27 | confirmed | [EP-15](#ep-15) |
 | `scripts/e2e.sh` smoke test | test-only | `make e2e`, CI | scripts/e2e.sh:15 | confirmed | [EP-15](#ep-15) |
 | Fuzz targets (6) | test-only | `go test -fuzz` (`make fuzz-smoke`) | internal/protocol/fuzz_test.go:90, internal/protocol/fuzz_test.go:98 (four more in [EP-15](#ep-15)) | confirmed | [EP-15](#ep-15) |
+| Go benchmarks (48 `Benchmark*` functions in the tests of field, group, elligator, hashing, ntt, rns, poly and protocol) | test-only | `go test -bench` (`make bench`; not the `minipsi bench` command) | Makefile:61-62, internal/protocol/protocol_test.go:856 | confirmed | [DEVELOPMENT.md](DEVELOPMENT.md#benchmarks) |
 | In-process test harnesses (CLI `Run`, protocol `runPair` and `fakePeer`, transport sessions) | test-only | `go test ./...` | internal/cli/cli_test.go:68, internal/protocol/protocol_test.go:62, internal/transport/transport_test.go:124 | confirmed | [EP-15](#ep-15) |
 | **Build and deploy** | | | | | |
 | Makefile targets (`build`, `e2e`, `fuzz-smoke`, `proto`, `check`, and others) | build/deploy | developer, CI | Makefile:26, Makefile:80 | confirmed | [EP-15](#ep-15) |
 | Container `ENTRYPOINT ["/usr/local/bin/minipsi"]` | build/deploy | `docker run` | Dockerfile:21 | confirmed | [EP-01](#ep-01), [EP-15](#ep-15) |
 | GitHub Actions CI (lint, test, vuln, proto, e2e, fuzz, docker) | build/deploy | push to `main`, pull request, manual dispatch | .github/workflows/ci.yml:6-10 | confirmed | [EP-15](#ep-15) |
 
-**Totals: 44 rows. 42 confirmed, 2 likely, 0 unresolved.** Group label rows are not counted. The two *likely* rows are third-party internals that exist but were not enumerated.
+**Totals: 45 rows. 43 confirmed, 2 likely, 0 unresolved.** Group label rows are not counted. The two *likely* rows are third-party internals that exist but were not enumerated.
 
 <a id="ep-01"></a>
 ### EP-01 Process start: main
@@ -212,8 +215,8 @@ Each row is one execution path or trigger. Paths that several tracers reported w
 - **Trigger and input:** The binary is executed, either `bin/minipsi` from `make build` (Makefile:26-27) or the image's `ENTRYPOINT` (Dockerfile:21). The input is `os.Args[1:]`, `os.Stdout`, `os.Stderr` and `context.Background()` as the root context.
 - **Validation:** None in `main`.
 - **Orchestration:** One line: `os.Exit(cli.Run(...))` (cmd/minipsi/main.go:12).
-- **Downstream:** `cli.Run` is called directly at cmd/minipsi/main.go:12 and is the only VTA edge out of `main`. `os.Exit` is on the same line.
-- **Outputs and side effects:** The process exit status is the value `cli.Run` returns. The codes are 0 OK, 1 usage or configuration, 2 input, 3 network, 4 protocol, abort or interrupt, and 5 internal (internal/cli/root.go:19-26). `main` registers no deferred work, and an unrecovered panic outside the protocol task group ends the process with the Go runtime's status 2.
+- **Downstream:** `cli.Run` is called directly at cmd/minipsi/main.go:12 and is the only VTA edge from `main` into a module function. `context.Background` and `os.Exit` are called on the same line.
+- **Outputs and side effects:** The process exit status is the value `cli.Run` returns. The codes are 0 OK, 1 usage or configuration, 2 input, 3 network, 4 protocol, abort or interrupt, and 5 internal (internal/cli/root.go:19-26). `main` registers no deferred work, and an unrecovered panic ends the process with the Go runtime's status 2. The protocol task group recovers panics only on its own goroutines (internal/protocol/session.go:546) and turns them into `CodeInternal` (exit 5). A panic in a `parallel.For` worker (internal/parallel/parallel.go:63) or a `poly.Arith` fork (internal/poly/arith.go:49) is not recovered.
 - **Call graph:** [CG-01](CALL_GRAPHS.md#cg-01).
 
 <a id="ep-02"></a>
@@ -309,7 +312,7 @@ Each row is one execution path or trigger. Paths that several tracers reported w
   - `--mode relay` fails in `validMode` (internal/config/config.go:256-257). This is the reserved Orchestrator path, and it is not implemented.
   - The rest is as in EP-03.
 - **Orchestration specific to request:**
-  1. `transportOptions` attaches gRPC metadata `minipsi-dataset` and `minipsi-identity` (internal/cli/party.go:369-377). The identity defaults to the first DNS or URI SAN of `--cert` (`firstSAN`, internal/cli/party.go:405).
+  1. `transportOptions` attaches gRPC metadata `minipsi-dataset` and `minipsi-identity` (internal/cli/party.go:369-377). The identity defaults to the first DNS or URI SAN of `--cert`, or to its subject Common Name if it has no such SAN (`firstSAN`, internal/cli/party.go:405-424).
   2. `transport.Dial` sends that metadata with the stream (internal/transport/transport.go:512) and retries until the deadline (internal/transport/transport.go:508-562).
   3. If the daemon's admission check rejects the request, the server answers `FailedPrecondition`. `Dial` turns that into `ErrRejected` and stops retrying (internal/transport/transport.go:543-545), and the process exits with 4 (internal/cli/party.go:454-455).
   4. If the daemon stays busy until the window ends, the error is `ErrBusy` (internal/transport/transport.go:552-553) and the exit code is 3.
@@ -351,7 +354,7 @@ Each row is one execution path or trigger. Paths that several tracers reported w
 - **Downstream (direct):** `resolveDev`, `loadInput`, `transportOptions`, `transport.Listen`, `(*Server).Accept`, `serveSession`, `protocol.AbortConn` and `protocol.RunSender` at the lines above.
 - **Outputs and side effects:**
   - A long-lived TCP listener.
-  - One JSON report per session at `<state-dir>/reports/<UTC time>-<seq>-<sid or failed>.json` (internal/cli/serve.go:213-221).
+  - Only when `--state-dir` is set (the default is empty, which means no reports): one JSON report per session at `<state-dir>/reports/<UTC time>-<seq>-<sid or failed>.json` (internal/cli/serve.go:213-221).
   - Logs. There is no result output, because the sender learns nothing.
   - Failed sessions are logged and reported but never stop the daemon (internal/cli/serve.go:102-103). A clean shutdown returns exit code 0 (internal/cli/serve.go:158-160).
 - **Call graph:** [CG-04](CALL_GRAPHS.md#cg-04). Shutdown: [EP-11](#ep-11).
@@ -372,7 +375,7 @@ Each row is one execution path or trigger. Paths that several tracers reported w
 - **Orchestration:**
   1. Sends the `minipsi-session: accepted` header (internal/transport/transport.go:428).
   2. Wraps the stream with `newStreamConn` (internal/transport/transport.go:432). This starts the pump and send-loop goroutines ([EP-13](#ep-13)).
-  3. Hands the `Session` to `Accept` through a channel (internal/transport/transport.go:437, internal/transport/transport.go:457).
+  3. Hands the `Session` to `Accept` through a channel (internal/transport/transport.go:437, internal/transport/transport.go:457). If the stream ends first, the handler frees the slot and returns the context error. If the server is closing, it returns `Unavailable` "server shutting down" (internal/transport/transport.go:438-446).
   4. Blocks until the local owner calls `Session.Close` or the stream context ends (internal/transport/transport.go:448-451).
   5. Stops the adapter and returns `nil`, which gives OK trailers (internal/transport/transport.go:452-453).
 - **Frame mapping:** `protocol.Frame` and `pb.Frame` are converted by `toPB` and `fromPB` (internal/transport/convert.go:10, internal/transport/convert.go:49) inside the send loop and the pump.
@@ -389,7 +392,7 @@ Each row is one execution path or trigger. Paths that several tracers reported w
   2. Per-instance de-duplication and the padded point count (internal/protocol/receiver.go:52-56).
   3. `checkOwn` (internal/protocol/receiver.go:57, internal/protocol/session.go:475): the instance count, strictly increasing IDs, and sizes within `Limits`.
   4. `newSession` (internal/protocol/receiver.go:60): `Config.validate` (internal/protocol/session.go:171) and the arithmetic engine `poly.NewArith` (internal/protocol/session.go:174).
-  5. The same checks are available without a network as `CheckInput` (internal/protocol/padding.go:99), which the CLI calls first (internal/cli/party.go:230).
+  5. The same checks, except the NTT backend check done by `poly.NewArith`, are available without a network as `CheckInput` (internal/protocol/padding.go:99-114), which the CLI calls first (internal/cli/party.go:230).
 - **Orchestration:** `s.run(ctx, r.body)` (internal/protocol/receiver.go:65).
   - `session.run` (internal/protocol/session.go:222) starts the writer and the role body as task-group goroutines (internal/protocol/session.go:225, internal/protocol/session.go:229).
   - `receiver.body` (internal/protocol/receiver.go:97):
@@ -403,7 +406,7 @@ Each row is one execution path or trigger. Paths that several tracers reported w
   - On failure, the error is classified and a best-effort `Abort` frame goes to the peer (internal/protocol/session.go:243-249).
 - **Outputs:**
   - `*Result` (internal/protocol/receiver.go:22). For each instance it holds the indices of the receiver's items that are in the intersection (`InstanceResult`, internal/protocol/receiver.go:31), plus the SID, the output length and `Stats`.
-  - Errors are `*Error` (with `Remote` set if the peer aborted) or `*TransportError`.
+  - Errors from the session are `*Error` (with `Remote` set if the peer aborted) or `*TransportError`. Configuration errors found before the session starts are plain errors, not `*Error`: the padding policy (internal/protocol/padding.go:38), `Config.validate` (internal/protocol/session.go:105-118) and an unknown NTT backend (internal/rns/rns.go:289). `checkOwn` problems are `*Error` (`CodeInput` or `CodeLimit`). In all of these cases nothing is sent on `conn`, not even an `Abort`, so the peer waits until its `HandshakeTimeout` ([GAP-08](ANALYSIS_GAPS.md#gap-08)).
   - `conn` is not closed (internal/protocol/receiver.go:39). The only side effects are frames on `conn` and CPU work.
 - **Call graph:** [CG-06](CALL_GRAPHS.md#cg-06) (session), [CG-07](CALL_GRAPHS.md#cg-07) (algorithm).
 
@@ -439,7 +442,7 @@ Each row is one execution path or trigger. Paths that several tracers reported w
   3. Starts two goroutines: `RunReceiver` on one end (internal/cli/tools.go:113, internal/cli/tools.go:116) and `RunSender` on the other (internal/cli/tools.go:118, internal/cli/tools.go:121). Each closes its own end when it returns.
   4. Waits for both (internal/cli/tools.go:123).
   5. Prints a table and the per-phase timings to stdout (internal/cli/tools.go:132-138).
-- **Outputs and side effects:** stdout only. There is no network, no file and no signal handler. Any failure exits with 5.
+- **Outputs and side effects:** stdout only. There is no network, no file and no signal handler. A rejected flag value (range check or `--hash`) exits with 1 (internal/cli/tools.go:95, internal/cli/tools.go:99); a failed run of either party, including an unknown `--ntt-backend`, exits with 5 (internal/cli/tools.go:125-126).
 - **Call graph:** [CG-10](CALL_GRAPHS.md#cg-10).
 
 <a id="ep-10"></a>
@@ -535,7 +538,7 @@ Call graphs: [CG-05](CALL_GRAPHS.md#cg-05), [CG-06](CALL_GRAPHS.md#cg-06), [CG-0
 
 - **`version`** (`newVersionCmd`, internal/cli/root.go:112-123):
   - Takes no arguments (`cobra.NoArgs`).
-  - Prints `version.Version`, `Commit` and `Date` (internal/version/version.go:5-9, stamped by Makefile:7-8 or Dockerfile:14), then the protocol version `1` and the suite `minipsi-v1-ed25519-ell2` (internal/version/version.go:11-16), then the Go version and the OS/architecture.
+  - Prints `version.Version`, `Commit` and `Date` (internal/version/version.go:5-9, stamped by Makefile:7-8, or by Dockerfile:14 for `Version` and `Commit` only, so `Date` stays `unknown` in the image), then the protocol version `1` and the suite `minipsi-v1-ed25519-ell2` (internal/version/version.go:11-16), then the Go version and the OS/architecture.
   - CI runs it as the docker smoke test (.github/workflows/ci.yml:99).
 - **`help`, `-h` and `--help`** are cobra built-ins (framework). The root command has no `Run` (internal/cli/root.go:73-78), so `minipsi` without arguments prints the help and exits with 0. The same applies to `minipsi certs` (internal/cli/tools.go:22). Both were observed with `bin/minipsi`.
 - **`completion bash/zsh/fish/powershell`** and the hidden `__complete` are added by cobra to the root at execution time (framework). They were observed in `bin/minipsi help` and `bin/minipsi __complete`. No repository code is involved.
@@ -555,6 +558,7 @@ Call graphs: [CG-05](CALL_GRAPHS.md#cg-05), [CG-06](CALL_GRAPHS.md#cg-06), [CG-0
 | `FuzzReceiverFrames` | test-only (fuzz) | internal/protocol/fuzz_test.go:98 | A real receiver against scripted peer frames |
 | `FuzzRead` | test-only (fuzz) | internal/itemio/itemio_test.go:142 | The lines and CSV input parsers |
 | `FuzzMapPreimages` | test-only (fuzz) | internal/elligator/elligator_test.go:481 | The Elligator2 inverse |
+| Go benchmarks (`Benchmark*`), `make bench` | test-only (benchmark) | Makefile:61-62, internal/protocol/protocol_test.go:856-861 | `go test -bench` over every package; the protocol benchmarks run both parties over `Pipe` through `runPair` |
 | CLI test harness | test-only | internal/cli/cli_test.go:68 | Calls `cli.Run` in-process (for example `TestExitCodes` at internal/cli/cli_test.go:189, `TestInterruptWritesReport` at internal/cli/cli_test.go:239). Serve tests: internal/cli/serve_test.go:57 |
 | Protocol pair harness | test-only | internal/protocol/protocol_test.go:62 | Both parties over `Pipe` (internal/protocol/protocol_test.go:66). The scripted `fakePeer` is at internal/protocol/protocol_test.go:405 |
 | Transport session harness | test-only | internal/transport/transport_test.go:124, internal/transport/transport_test.go:126 | `RunReceiver`/`RunSender` over real gRPC and mTLS, including bufconn. Daemon semantics: `TestRepeatServer` (internal/transport/transport_test.go:588) |
@@ -770,7 +774,7 @@ func (e *TransportError) Unwrap() error
 |---|---|---|---|
 | `receiver`, `request` | `cli.runParty` | `RunReceiver` at internal/cli/party.go:301 | `sess.Conn()` from transport |
 | `sender` | `cli.runParty` | `RunSender` at internal/cli/party.go:293 | `sess.Conn()` from transport |
-| one-shot parties, pre-flight | `cli.loadInput` | `CheckInput` at internal/cli/party.go:230 | none |
+| `receiver`, `sender`, `request` and `serve`, pre-flight | `cli.loadInput`, called from `cli.runParty` (internal/cli/party.go:261), from `cli.runServe` for every dataset at startup (internal/cli/serve.go:113) and from `cli.serveSession` per session (internal/cli/serve.go:180) | `CheckInput` at internal/cli/party.go:230 | none |
 | `serve` | `cli.serveSession` | `RunSender` at internal/cli/serve.go:192, `AbortConn` at internal/cli/serve.go:183 | `sess.Conn()` from transport |
 | `bench` | `RunE` goroutines | internal/cli/tools.go:116, internal/cli/tools.go:121 | `PipeConn` pair |
 | protocol tests (test-only) | `runPair` and others | internal/protocol/protocol_test.go:73, internal/protocol/protocol_test.go:78 | `PipeConn` |
@@ -811,13 +815,13 @@ These facts are taken from the code. They are not recommendations.
 
 1. **Who calls `Send`.**
    - During a run, only the session writer goroutine calls `Send` (internal/protocol/session.go:283).
-   - After the writer has exited, the session sends one final best-effort `Abort`, with a 5 s bound (internal/protocol/session.go:244-248).
+   - After the writer has exited, the session sends one final best-effort `Abort` for a local failure (not for a remote `Abort` or a `*TransportError`, internal/protocol/errors.go:78-91), with a 5 s bound (internal/protocol/session.go:244-248). The context is detached from the caller's cancellation (`context.WithoutCancel`, internal/protocol/session.go:246), so a `Conn` must still accept this `Send` after the run context was cancelled and after earlier calls returned a context error; the gRPC `streamConn` is built for this (internal/transport/transport.go:139-142).
    - `AbortConn` sends one `Abort` on a session that never started (internal/protocol/errors.go:97-100).
 2. **Who calls `Recv`.** All receives go through `session.recv` (internal/protocol/session.go:309). The role body receives during the handshake (internal/protocol/session.go:389, internal/protocol/session.go:417). After that, only the reader goroutine receives (internal/protocol/receiver.go:440, internal/protocol/sender.go:324). `Recv` therefore never runs concurrently with itself.
 3. **Timeouts.**
    - Each `Recv` is bounded by `HandshakeTimeout` during the handshake and by `PhaseTimeout` afterwards (defaults at internal/protocol/session.go:82-87).
-   - A `Recv` timeout becomes `CodeTimeout` (internal/protocol/session.go:314-315). Any other `Recv` failure becomes `*TransportError` (internal/protocol/session.go:317). A failed `Send` becomes `*TransportError` too (internal/protocol/session.go:287).
-4. **Order and integrity.** Each side digests every frame except `Done` and `Abort`, and checks the count and the digest when the peer's `Done` arrives (internal/protocol/session.go:276-281, internal/protocol/session.go:326-329, internal/protocol/session.go:334-338). A reordered, lost or duplicated frame therefore fails the run with `CodeProtocol` at the `Done` check at the latest.
+   - A `Recv` timeout becomes `CodeTimeout` (internal/protocol/session.go:314-315). If the run context itself is done, the `Recv` or `Send` error is replaced by the context error (internal/protocol/session.go:311-312, internal/protocol/session.go:284-285), which `classify` turns into `CodeCancelled`, or `CodeTimeout` for a parent deadline (internal/protocol/session.go:255-266). Any other `Recv` failure becomes `*TransportError` (internal/protocol/session.go:317), and any other failed `Send` becomes `*TransportError` too (internal/protocol/session.go:287). If a `Conn` error itself wraps `context.Canceled` or `context.DeadlineExceeded` while the run context is still live (for example an HTTP client timeout inside a relay `Conn`), `classify` turns it into a local `*Error` with `CodeCancelled` that wraps the `*TransportError`, and no `Abort` is sent because `abortFor` finds the `*TransportError` (internal/protocol/errors.go:79-82). `Send` has no per-call timeout: during a run it is bounded only by the run context (internal/protocol/session.go:283).
+4. **Order and integrity.** Each side digests every frame except `Done` and `Abort`, and checks the count and the digest when the peer's `Done` arrives (internal/protocol/session.go:276-281, internal/protocol/session.go:326-329, internal/protocol/session.go:334-338). A reordered, lost or duplicated frame other than `Done` therefore fails the run by the `Done` check at the latest, usually with `CodeProtocol`; a part that overflows its instance fails with `CodeBadEncoding` instead (internal/protocol/receiver.go:473-475, internal/protocol/sender.go:340-342). A lost `Done` is not covered by the digest: the peer waits for `PhaseTimeout` and fails with `CodeTimeout` (internal/protocol/session.go:314-315). A lost frame after which the peer only waits (for example the last `PolyChunk`) is likewise caught only by that timeout, and the side that sent a lost `Done` may already have returned success (internal/protocol/sender.go:95-104). `RunReceiver` and `RunSender` return once every `Send` has returned, not once the peer has read the frames (internal/protocol/session.go:236), so a `Conn` must not drop frames it has accepted when the caller closes it.
 5. **Frame size.**
    - Both roles build frames that fit `MaxFrame` minus a 1024-byte reserve (internal/protocol/messages.go:201, internal/protocol/session.go:376, internal/protocol/sender.go:111).
    - The gRPC transport accepts messages up to `MaxFrame` + 64 KiB (internal/transport/transport.go:118).

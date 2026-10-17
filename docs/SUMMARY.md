@@ -113,9 +113,11 @@ protocol.RunReceiver / protocol.RunSender
         |     -> Interpolate (internal/protocol/receiver.go:208)
         |   -> sendPolys (internal/protocol/receiver.go:233)       PolyChunk   -> peer
         |   reader (internal/protocol/receiver.go:419)            OutputChunk <- peer, then match -> Result
-        `-- sender: reader (internal/protocol/sender.go:299) receives the polynomials
+        `-- sender: sendKeys (internal/protocol/sender.go:108)             SenderKeys  -> peer
+              -> prepare: shuffle (internal/protocol/sender.go:149), hash items, build trees
+              reader goroutine (internal/protocol/sender.go:299) receives the polynomials
               -> Evaluate (internal/poly/evaluator.go:47) -> DH exponentiation -> output hash
-              -> shuffle (internal/protocol/sender.go:149)        OutputChunk -> peer
+                                                                OutputChunk -> peer
 ```
 
 ## One PSI session between two processes
@@ -131,7 +133,7 @@ sequenceDiagram
     par
         R->>S: Hello + SizesChunk, announced point counts
     and
-        S->>R: Hello + SizesChunk, announced item counts
+        S->>R: Hello + SizesChunk, announced output counts (items plus sender padding)
     end
     Note over R,S: check version, suite, roles, hash, lambda, instance IDs and limits, then derive SID and l_out
     par
@@ -148,8 +150,10 @@ sequenceDiagram
     Note over R: itemio.WriteResult writes the intersection, internal/cli/party.go:311
 ```
 
-On an error, the side that detects it sends `Abort` (`internal/protocol/session.go:247`) and
-both sides stop.
+On an error after the session has started, the side that detects it sends `Abort`
+(`internal/protocol/session.go:247`) and both sides stop. No `Abort` is sent for a `Conn`
+failure, for an `Abort` received from the peer, or for a failure before the session starts
+([GAP-08](ANALYSIS_GAPS.md#gap-08)).
 
 ## Where a new API plugs in
 
