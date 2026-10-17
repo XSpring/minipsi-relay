@@ -176,8 +176,9 @@ Format: `<type>(<module>): <summary>`
 
 ## Pull requests
 
-- Title: the commit format, `<type>(<module>): <summary>`. Base branch: main.
-- Merge only after CI passes and a reviewer approves.
+- Title: the commit format, `<type>(<module>): <summary>`, at most 65 characters, because the
+  squash commit adds ` (#<number>)` (see Merging). Base branch: main.
+- Merge only after CI passes and a reviewer approves, and only with "Squash and merge".
 
 ### Description
 
@@ -229,6 +230,23 @@ the sections of .github/pull_request_template.md, in this order:
 5. State clearly any check that failed, was skipped or could not be run.
 
 Never open a pull request with an empty, generic or misleading description.
+
+### Merging
+
+- Always use "Squash and merge": all commits of the pull request become one commit on main.
+  Never use "Create a merge commit" or "Rebase and merge".
+- The squash commit subject is the pull request title with the ` (#<number>)` suffix that
+  GitHub adds, for example `docs(agents): always squash and merge pull requests (#7)`.
+- Replace the default squash commit body (the list of branch commits) with a short summary of
+  the change. When an AI agent made the change, end it with `Supported by minipsi-relay agent`.
+- The commits inside the branch still follow the commit rules; they stay visible in the pull
+  request after the merge.
+- Delete the branch after the merge, on GitHub and locally. Git does not see a squashed branch
+  as merged, so delete the local branch with `git branch -D` after checking that its pull
+  request is merged.
+- AI agents merge only when the user asks.
+- The repository settings should allow only squash merging and delete head branches
+  automatically; changing them needs an admin.
 
 ## Issues
 

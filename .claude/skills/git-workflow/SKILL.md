@@ -75,6 +75,14 @@ Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
 5. Return the pull request URL that gh prints.
 6. After new commits or new verification results, update the body:
    `gh pr edit <number> --body-file /path/to/body.md`.
+7. Merge only when the user asks, and only with "Squash and merge" (Merging in AGENTS.md). The
+   subject is the pull request title plus ` (#<number>)`; the body file holds a short summary of
+   the change and ends with `Supported by minipsi-relay agent`:
+
+   ```bash
+   gh pr merge <number> --squash --delete-branch \
+     --subject "<type>(<module>): <summary> (#<number>)" --body-file /path/to/squash-body.md
+   ```
 
 ## 4. Issue
 
@@ -94,6 +102,8 @@ Apply the rules in AGENTS.md. Write everything in English, in plain ASCII.
   changes are in other branches.
 - Every commit subject matches `<type>(<module>): <summary>`.
 - No pushed commit was amended or force-pushed; fixes are new commits.
+- The pull request title is at most 65 characters; the pull request is merged only with
+  "Squash and merge", and the branch is deleted afterwards.
 - The plan is in the task's issue and matches the change.
 - Tests for the change pass.
 - The pull request body follows the template and the quality rules in AGENTS.md, matches the
