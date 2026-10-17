@@ -102,6 +102,8 @@ flowchart TD
     EX -.->|16 RunE| CERTS
     EX -.->|17 RunE| BENCH
     EX -.->|18 Run| VER
+    EX -.->|18a Run or RunE| BUILTIN["cobra built-in help and completion commands: print help or a completion script to stdout"]
+    BUILTIN -->|18b nil: code 0| EXIT
     FIND -->|19 unknown command| MAP
     PF -->|20 bad flag or value| MAP
     VA -->|21 unexpected argument| MAP
@@ -134,7 +136,7 @@ and `version` keep Go's default signal behaviour.
 | 10 | `ExecuteC` -> `(*Command).execute` | cobra command.go line 1148 | framework (cobra) |
 | 11 | `execute` -> `ParseFlags` | cobra command.go line 919 | framework (cobra) |
 | 12 | `execute` returns `flag.ErrHelp` (help flag: lines 934-935; command without Run: lines 955-956) | cobra command.go lines 934-956 | branch |
-| 13 | `execute` -> `ValidateArgs` (`Args: cobra.NoArgs` at `internal/cli/party.go:152`, `internal/cli/serve.go:39`, `internal/cli/root.go:116`) | cobra command.go line 968 | framework (cobra) |
+| 13 | `execute` -> `ValidateArgs` (`Args: cobra.NoArgs` at `internal/cli/party.go:152`, `internal/cli/serve.go:39`, `internal/cli/tools.go:35`, `internal/cli/tools.go:92`, `internal/cli/root.go:116`) | cobra command.go line 968 | framework (cobra) |
 | 14 | `execute` -> party RunE closure (`newPartyCmd$1`, `internal/cli/party.go:156`) | cobra command.go line 1015 | framework (cobra), func-value |
 | 15 | `execute` -> serve RunE closure (`newServeCmd$1`, `internal/cli/serve.go:57`) | cobra command.go line 1015 | framework (cobra), func-value |
 | 16 | `execute` -> certs dev RunE (`internal/cli/tools.go:36`) | cobra command.go line 1015 | framework (cobra), func-value |
@@ -171,7 +173,10 @@ and `version` keep Go's default signal behaviour.
   and exit 0: the root command and `certs` have no Run (`internal/cli/root.go:73-78`,
   `internal/cli/tools.go:22`), so cobra returns `flag.ErrHelp` and `ExecuteC` turns it into
   nil.
-- An unknown command or flag, a bad flag value or an extra positional argument gives a
+- An unknown subcommand of `certs` (for example `minipsi certs foo`) is not an error: cobra
+  rejects unknown subcommands only on the root (cobra args.go lines 35-36), so `certs` prints
+  its help and exits 0.
+- An unknown top-level command or flag, a bad flag value or an extra positional argument gives a
   plain error. `exitCode` returns 5 and `cli.Run` rewrites it to 1 (`internal/cli/root.go:97-99`).
   Cobra prints nothing itself because `SilenceUsage` and `SilenceErrors` are set
   (`internal/cli/root.go:76-77`). The only message is `minipsi: <error>` on stderr.
@@ -420,17 +425,24 @@ Diagram 3:
   file, and any `Validate` failure. `mode: relay` is one of these: receiver and sender have
   no `--mode` flag (only `request` registers it, `internal/cli/party.go:77`), so the mode comes
   from YAML and `validMode` rejects `relay` (`internal/config/config.go:256-257`).
-- Exit 1 inside `runParty`: unknown hash name (`internal/cli/party.go:223-224`), dev PKI
+- An unknown hash name is rejected by `Validate` (`internal/config/config.go:194-198`) before
+  `runParty`, so it exits 1 with no report. The `protocolConfig` -> `hashing.ParseAlg` error
+  branch (`internal/cli/party.go:223-224`) is defensive and unreachable from the CLI.
+- Exit 1 inside `runParty` (the report is still written if `--report` is set): dev PKI
   failure, unreadable PEM files, a bad connect address (`internal/cli/party.go:361-364`), and
   `--insecure-dev` without `MINIPSI_I_UNDERSTAND_INSECURE=1` (`internal/cli/party.go:452-453`).
 - Exit 2: the input cannot be read or parsed, or `protocol.CheckInput` rejects it (limits,
   IDs), before any connection is made (`internal/cli/party.go:204-205`).
 - `classifyTransport` (`internal/cli/party.go:450-460`): `ErrRejected` gives 4, `context.Canceled`
   gives 4 ("interrupted"), and everything else gives 3. That includes a listen failure, a TLS
-  failure, an unreachable peer, an exhausted retry window and an expired run deadline.
+  failure seen by the dialing side, an unreachable peer, an exhausted retry window and an expired
+  run deadline. In listen mode a failed TLS handshake (untrusted certificate, `--peer-name`
+  mismatch) never reaches `Accept`, which returns only a session, a server error or `ctx.Done()`
+  (`internal/transport/transport.go:457-466`), so the listener keeps waiting until `--timeout`
+  or a signal. `ErrInsecureNotAcknowledged` gives 1 (`internal/cli/party.go:452-453`).
 - Protocol errors from `RunSender` / `RunReceiver` are returned unwrapped and mapped by
   `exitCode` ([CG-01](#cg-01)): peer abort 4, local timeout 3, local input problem 2, local
-  internal error 5, other local codes 4.
+  internal error 5, other local codes 4. A connection lost mid-run (for example a killed peer) is a `*protocol.TransportError` (`internal/protocol/session.go:287`, `internal/protocol/session.go:317`) and exits 3 (`internal/cli/root.go:46-49`), as `TestPeerKilled` checks (`test/e2e/e2e_test.go:224`).
 - The receiver closes the session before it writes the result, so the peer's shutdown does
   not wait on output size (comment at `internal/cli/party.go:302-303`). Exit 5 if the output
   cannot be written, or if the report cannot be written after an otherwise successful run.
@@ -470,7 +482,7 @@ flowchart TD
     DIAL["openSession, transport.Dial with retry (CG-05)"]
     subgraph DAEMON["serve daemon process, other host (CG-04)"]
         SRV(("Server.Session handler and Admit"))
-        SND(("protocol.RunSender on the dataset"))
+        SND(("serveSession: loadInput, AbortConn on failure, else protocol.RunSender on the dataset"))
     end
     CT["classifyTransport"]
     E4["exit 4 ExitProtocol"]
@@ -821,7 +833,7 @@ Protocol roles do not depend on gRPC roles. Either party can listen or dial
 ([CG-06](#cg-06)). Production code calls `transport.Listen`. Only tests call
 `transport.Serve` directly, on a bufconn listener (internal/transport/transport_test.go:107).
 After the session opens, the CLI passes `sess.Conn()` to the protocol
-(internal/cli/party.go:293, internal/cli/party.go:301, internal/cli/serve.go:192).
+(internal/cli/party.go:293, internal/cli/party.go:301, internal/cli/serve.go:192). The daemon also passes it to `protocol.AbortConn` when the dataset fails to load (internal/cli/serve.go:183).
 
 ### Overview: both processes and the network
 
@@ -893,7 +905,7 @@ flowchart TD
     CRD["Options.creds<br/>internal/transport/transport.go:111"]
     NSV["grpc.NewServer<br/>internal/transport/transport.go:377"]
     REG["minipsiv1.RegisterPSIServer, generated<br/>internal/gen/minipsiv1/psi_grpc.pb.go:89"]
-    RGS["grpc.Server.RegisterService with PSI_ServiceDesc<br/>internal/gen/minipsiv1/psi_grpc.pb.go:110"]
+    RGS["grpc.Server.RegisterService with PSI_ServiceDesc<br/>internal/gen/minipsiv1/psi_grpc.pb.go:97"]
     SGR["Serve goroutine<br/>internal/transport/transport.go:386"]
     GSV["grpc.Server.Serve accept loop, grpc-go"]
     ACC["Server.Accept<br/>internal/transport/transport.go:457"]
@@ -958,7 +970,7 @@ flowchart TD
   SES --> NSC
   SES --> HOF
   HOF ==>|"chan sessions"| ACC
-  HOF -->|"server closed"| REF
+  HOF -->|"server closed: Unavailable after the accept header, read by the peer pump"| PEER
   SES --> WRL
   WRL --> STP
   REF -->|"remote: grpc-status FailedPrecondition or Unavailable"| PEER
@@ -1103,7 +1115,7 @@ flowchart TD
 `Session.Close` is called by `cli.runParty` through `closeAll` (deferred at
 internal/cli/party.go:287, and called early after `RunReceiver` at
 internal/cli/party.go:304). `closeAll` is built in `cli.openSession`
-(internal/cli/party.go:441 and internal/cli/party.go:447). `cli.serveSession` also calls it
+(internal/cli/party.go:441 and internal/cli/party.go:447). `cli.serveSession` calls `Session.Close` directly
 (internal/cli/serve.go:170 deferred, internal/cli/serve.go:199). `cli.runServe` stops the
 daemon with a deferred `srv.Close()` (internal/cli/serve.go:147).
 
@@ -1158,11 +1170,11 @@ flowchart TD
 | 4 | `Server.Session` | Slot already taken, one-shot listener | none | `Unavailable "this process serves exactly one session"` (internal/transport/transport.go:422) |
 | 5 | `Server.Session` | `SendHeader` fails | Slot freed, error returned (internal/transport/transport.go:428-431) | Stream error |
 | 6 | `Server.Session` | Stream ends before `Accept` takes it, e.g. a probe that disconnected | `conn.stop`, slot freed (internal/transport/transport.go:438-442) | Peer already gone |
-| 7 | `Server.Session` | `Server.Close` ran before the hand-off | `conn.stop` (internal/transport/transport.go:443-445) | `Unavailable "minipsi: server shutting down"` |
+| 7 | `Server.Session` | `Server.Close` ran before the hand-off | `conn.stop` (internal/transport/transport.go:443-445) | The accept header was already sent (internal/transport/transport.go:428), so the peer's `Dial` has returned a `Session`. The peer's `pump` then receives `Unavailable: minipsi: server shutting down` (via `mapErr`, internal/transport/transport.go:277), and `Conn.Recv` returns it |
 | 8 | `Server.Accept` | `serveErr` fires, or ctx done | `transport: server stopped` or `ctx.Err()` (internal/transport/transport.go:461-464). `cli.openSession` then closes the server (internal/cli/party.go:436-438). `cli.runServe` returns nil when its ctx was cancelled (internal/cli/serve.go:157-160) | n/a |
 | 9 | `normalize` | Insecure without `MINIPSI_I_UNDERSTAND_INSECURE=1`, TLS and Insecure both set, no TLS, or TLS below 1.3 (internal/transport/transport.go:93-107) | `ErrInsecureNotAcknowledged` maps to `ExitUsage` (internal/cli/party.go:452-453). The other errors fall through to `ExitNetwork` (internal/cli/party.go:459) | Nothing is sent |
 | 10 | `Dial` | Stream opened, but no accept header and `Recv` returned no error | `transport: server did not accept the session` (internal/transport/transport.go:521-525), then retried like any failure | n/a |
-| 11 | `Dial` | Dial ctx cancelled | `ctx.Err()` (internal/transport/transport.go:547-551). The CLI maps it to `ExitProtocol` "interrupted" (internal/cli/party.go:456-457) | The attempt's stream is cancelled |
+| 11 | `Dial` | Dial ctx done: cancelled, or the `timeouts.total` deadline (internal/cli/party.go:278-281) expired | `ctx.Err()` (internal/transport/transport.go:547-551). The CLI maps `context.Canceled` to `ExitProtocol` "interrupted" (internal/cli/party.go:456-457); `context.DeadlineExceeded` falls through to `ExitNetwork` (internal/cli/party.go:459) | The attempt's stream is cancelled |
 | 12 | `Dial` | Any other failure inside the window | Debug log, 250 ms pause, next attempt (internal/transport/transport.go:557-561). When the window ends: `transport: connecting to ADDR: ...` with `mapErr` (internal/transport/transport.go:555), mapped to `ExitNetwork` | n/a |
 | 13 | `pump` | gRPC `Recv` error | `mapErr`: `io.EOF` is kept, `Canceled` becomes "stream cancelled by peer" wrapping `io.EOF`, `ResourceExhausted` becomes "frame exceeds size limit" (internal/transport/transport.go:266-280). The pump exits after the first error (internal/transport/transport.go:180-182), and `Recv` keeps returning it (internal/transport/transport.go:225-233) | n/a |
 | 14 | `streamConn` | Used after `stop` | `io.ErrClosedPipe` (internal/transport/transport.go:212-213, internal/transport/transport.go:236-237) | n/a |
@@ -1211,7 +1223,8 @@ Calls inside grpc-go v1.84.0 are cited as "server.go line N" of the module sourc
 | B18 | server closed -> refusal status | internal/transport/transport.go:443-445 | branch |
 | B19 | `Server.Session` -> wait for `released` or stream end | internal/transport/transport.go:448-451 | branch |
 | B20 | `Server.Session` -> `(*streamConn).stop` | internal/transport/transport.go:452 | direct |
-| B21 | refusal status -> dialer, trailers-only response read by `stream.Recv` | internal/transport/transport.go:412 (also :415, :420, :422, :445) to internal/transport/transport.go:522 | remote |
+| B21 | refusal status -> dialer, trailers-only response read by `stream.Recv` | internal/transport/transport.go:412 (also :415, :420, :422) to internal/transport/transport.go:522 | remote |
+| B22 | shutdown status after the accept header -> peer `pump` (the peer's `Dial` has already returned a `Session`) | internal/transport/transport.go:445 to internal/transport/transport.go:168 (peer) | remote |
 | C1 | `cli.openSession` -> `transport.Dial` | internal/cli/party.go:443 | direct |
 | C2 | `Dial` -> `(*Options).normalize` | internal/transport/transport.go:489 | direct |
 | C3 | `Dial` -> `grpc.NewClient` | internal/transport/transport.go:503 | external-lib |
@@ -1276,8 +1289,9 @@ Calls inside grpc-go v1.84.0 are cited as "server.go line N" of the module sourc
 | F12 | `(*Session).Close` -> `s.release` = `Server.Session` closure | internal/transport/transport.go:352 | func-value |
 | F13 | release closure -> `Server.Session` via `released` | internal/transport/transport.go:435 to internal/transport/transport.go:449 | channel |
 | F14 | `Server.Session` returns nil -> grpc writes OK trailers (grpc-go server.go line 1513) -> client `pump` | internal/transport/transport.go:453 to internal/transport/transport.go:168 (peer) | remote |
-| F15 | `(*Server).Close` -> goroutine running `GracefulStop` | internal/transport/transport.go:472-473 | goroutine |
-| F16 | `(*Server).Close` -> `(*grpc.Server).Stop` after 5 s | internal/transport/transport.go:478-479 | external-lib |
+| F15 | `(*Server).Close` -> `close(s.closed)`, once; a pending hand-off in `Server.Session` then returns "server shutting down" (branch 7) | internal/transport/transport.go:470 to internal/transport/transport.go:443 | channel |
+| F16 | `(*Server).Close` -> goroutine running `GracefulStop` | internal/transport/transport.go:472-473 | goroutine |
+| F17 | `(*Server).Close` -> `(*grpc.Server).Stop` after 5 s | internal/transport/transport.go:478-479 | external-lib |
 
 ### Concurrency and timeouts
 
@@ -1309,9 +1323,14 @@ Calls inside grpc-go v1.84.0 are cited as "server.go line N" of the module sourc
     after an attempt has failed (internal/transport/transport.go:547), with a 250 ms pause between
     attempts (internal/transport/transport.go:559).
   - A single attempt has no timeout of its own. Its ctx derives from `context.Background()`, and
-    only the dial ctx can cancel it, through `AfterFunc` (internal/transport/transport.go:510-514).
+    during the attempt only the dial ctx can cancel it, through `AfterFunc` (internal/transport/transport.go:510-514).
+    `stop()` removes that hook when the attempt ends (internal/transport/transport.go:527). After `Dial` returns,
+    cancelling the dial ctx no longer affects the session stream; only the release closure cancels it
+    (internal/transport/transport.go:537).
 - **streamConn.**
-  - `pump` receives one frame ahead (`recvCh` capacity 1, internal/transport/transport.go:156).
+  - `pump` reads ahead of `Recv`: one frame waits in `recvCh` (capacity 1, internal/transport/transport.go:156)
+    and the pump can hold one more while it blocks on that channel (internal/transport/transport.go:168-176),
+    so up to two decoded frames are buffered.
   - `sendLoop` serialises `Send` and `CloseSend` (`sendCh` unbuffered,
     internal/transport/transport.go:157), because gRPC does not allow concurrent sends.
   - `Send` and `Recv` honour their ctx without tearing down the stream
@@ -1328,8 +1347,10 @@ Calls inside grpc-go v1.84.0 are cited as "server.go line N" of the module sourc
 
 `internal/protocol` is the library seam. `RunReceiver` and `RunSender` take a
 `context.Context`, a `Config`, a `Conn` and the party's `[]Instance`. They return `*Result`
-or `*SenderResult` together with an error that is a `*protocol.Error` or a
-`*protocol.TransportError`. The role-independent machinery lives in the unexported
+or `*SenderResult` together with an error. An error from the session run is a
+`*protocol.Error` or a `*protocol.TransportError`. A configuration error returned before the
+run (padding policy, `Config.validate`, `poly.NewArith`) is a plain `error`, and `checkOwn`
+returns a local `*protocol.Error` (`CodeInput` or `CodeLimit`). None of these failures sends anything to the peer ([GAP-08](ANALYSIS_GAPS.md#gap-08)). The role-independent machinery lives in the unexported
 `session` type (internal/protocol/session.go:154). It runs the writer goroutine, the receive
 helper with per-frame timeouts, the handshake, the transcript digests, the `Done` exchange
 and failure-to-Abort handling. The role algorithms are in [CG-07](#cg-07) and
@@ -1578,7 +1599,7 @@ flowchart TD
 |---|---|---|---|
 | 1 | `RunReceiver` / `RunSender` before `run` | Invalid padding policy (internal/protocol/receiver.go:42, internal/protocol/sender.go:30). `checkOwn` fails on IDs or limits (internal/protocol/session.go:475-498). `newSession` validation or `NewArith` fails (internal/protocol/session.go:171-177) | The error is returned before any frame is sent, so no Abort goes out and the peer waits out its `HandshakeTimeout`. The CLI runs the same checks earlier, through `protocol.CheckInput`, before it connects (internal/cli/party.go:230) |
 | 2 | `handshake` | Randomness failure (internal/protocol/session.go:365-367). First frame is not `Hello` (internal/protocol/session.go:393-396). Version, suite, role, hash, lambda or instance count mismatch (internal/protocol/session.go:398-411). Nonce length wrong (internal/protocol/session.go:408-409). Malformed `SizesChunk` (internal/protocol/session.go:421-427). ID mismatch (internal/protocol/session.go:430-431). Peer sizes over our limits (internal/protocol/session.go:434-439) | `CodeInternal`, `CodeProtocol`, `CodeParamMismatch` or `CodeLimit`. A local `*Error` is sent to the peer as an Abort |
-| 3 | `recv` | Parent ctx done (internal/protocol/session.go:311-313) | `ctx.Err()`, which `classify` turns into `CodeTimeout` or `CodeCancelled` |
+| 3 | `recv` | Group ctx done: the caller's ctx ended, or another task already failed (internal/protocol/session.go:311-313) | `ctx.Err()`. If the caller's ctx ended, `classify` turns it into `CodeTimeout` or `CodeCancelled`. After a sibling failure it is discarded, because the first error wins |
 | 4 | `recv` | Per-call timeout expired (internal/protocol/session.go:314-315) | `CodeTimeout` "no frame from peer within ..." |
 | 5 | `recv` | `Conn.Recv` failed, e.g. EOF or a reset (internal/protocol/session.go:317) | `*TransportError{Op: "recv"}`, no Abort |
 | 6 | `recv` | Nil frame (internal/protocol/session.go:319-320), or an `Abort` from the peer (internal/protocol/session.go:322-323) | `CodeProtocol` "empty frame", or `*Error{Remote: true}` with the peer's code and message |
@@ -1961,8 +1982,8 @@ How `compareValues` (`internal/protocol/receiver.go:311-376`) and `match` (`inte
 - **Invalid padding policy.** Extra or Min is outside [0, 2^20], or Multiple is outside [1, 2^20] (`internal/protocol/padding.go:35-41`). Checked at `internal/protocol/receiver.go:42-44`; the error is a plain `error`, not a `*protocol.Error`.
 - **Bad instance list** (`checkOwn`, `internal/protocol/session.go:475-498`, called at `internal/protocol/receiver.go:57`):
   - Instance IDs not strictly increasing: CodeInput.
-  - A padded instance above `MaxInstanceSize` (default 2^22), a total above `MaxTotalItems` (default 2^24), or more than `MaxInstances` instances: CodeLimit.
-- **Bad configuration** (`newSession`, `internal/protocol/session.go:169-177`): an unknown hash, lambda outside [40, 256], `MaxFrame` below 64 KiB, or an unknown NTT backend.
+  - An instance whose size max(len(Items), m_b) (duplicates counted in len(Items)) is above `MaxInstanceSize` (default 2^22), a sum of these sizes above `MaxTotalItems` (default 2^24), or more than `MaxInstances` (default 2^24) instances: CodeLimit.
+- **Bad configuration** (`newSession`, `internal/protocol/session.go:169-177`): an unknown hash, lambda outside [40, 256], `MaxFrame` below 64 KiB, an invalid `Padding` or `SenderPadding` policy (`internal/protocol/session.go:115-118`; the sender policy is validated on the receiver too), or an unknown NTT backend (`poly.NewArith`, `internal/protocol/session.go:174`).
 
 The CLI runs the same checks earlier, before connecting: `loadInput` calls `protocol.CheckInput` (`internal/cli/party.go:230`, `internal/protocol/padding.go:99`).
 
@@ -1983,7 +2004,7 @@ The CLI runs the same checks earlier, before connecting: `loadInput` calls `prot
   - Sent before all keys: CodeProtocol (`internal/protocol/receiver.go:463-464`).
   - Empty: CodeProtocol (`internal/protocol/receiver.go:466-467`).
   - A part for any instance other than the current one: CodeProtocol (`internal/protocol/receiver.go:470-471`). Outputs must arrive instance by instance.
-  - A part that is empty, not a multiple of l_out, or longer than n1_b*l_out: CodeBadEncoding (`internal/protocol/receiver.go:473-475`).
+  - A part that is empty, not a multiple of l_out, or that would bring the bytes received for the instance above n1_b*l_out: CodeBadEncoding (`internal/protocol/receiver.go:473-475`).
 - **Done problems:**
   - Done before all keys and outputs: CodeProtocol (`internal/protocol/receiver.go:484-485`).
   - A frame count or SHA-256 transcript digest that differs from what was received: CodeProtocol "transcript mismatch" (`internal/protocol/session.go:335-336`, called at `internal/protocol/receiver.go:487`).
@@ -2002,7 +2023,7 @@ The CLI runs the same checks earlier, before connecting: `loadInput` calls `prot
 
 **Timing.** The receiver sends its Done before matching (`internal/protocol/receiver.go:134-136`). Matching time depends on the intersection size, so this keeps it hidden from the sender.
 
-**Edge cases.** With zero instances, or when the sender announced n1_b = 0, the readiness channels are closed immediately (`internal/protocol/receiver.go:429-438`).
+**Edge cases.** With zero instances, `keysReady` and `outReady` are both closed immediately. When every instance has n1_b = 0, `outReady` is closed immediately, but `keysReady` still waits for the SenderKeys of all instances. An instance with n1_b = 0 in any other position is skipped by `skip` when the output cursor reaches it (`internal/protocol/receiver.go:424-438`, `internal/protocol/receiver.go:478`).
 
 ### Data flow
 
@@ -2073,7 +2094,7 @@ l_out = min(32, ceil((lambda + ceil(log2(max(2, sum_b n1_b*n2_b)))) / 8)) (`inte
 | Prepare | closure -> `elligator.EncodeBatch` | `internal/protocol/receiver.go:186` | direct |
 | Prepare | `prepare` -> `parallel.For` (per instance, grain 1) | `internal/protocol/receiver.go:201` | direct |
 | Prepare | closure -> `receiver.withDummies` | `internal/protocol/receiver.go:204` | direct |
-| Prepare | `withDummies` -> `io.ReadFull(r.rnd)` | `internal/protocol/receiver.go:285` | interface-dispatch (`io.Reader`) |
+| Prepare | `withDummies` -> `io.ReadFull(r.rnd)` | `internal/protocol/receiver.go:285` | direct (stdlib); `io.ReadFull` then calls `Read` through the `io.Reader` interface (`*lockedReader` or `crypto/rand.Reader`) |
 | Prepare | `withDummies` -> `field.Element.SetWideBytes` | `internal/protocol/receiver.go:288` | external-lib (`filippo.io/edwards25519/field`) |
 | Prepare | closure -> `poly.Arith.Interpolate` | `internal/protocol/receiver.go:208` | direct |
 | Prepare | `prepare` -> waves channel | `internal/protocol/receiver.go:222` | goroutine (channel hand-off) |
@@ -2351,7 +2372,7 @@ How `evaluate` (`internal/protocol/sender.go:199-259`) and `outputs` (`internal/
 - **Unexpected frame.** Any other frame kind is CodeProtocol (`internal/protocol/sender.go:360-361`).
 - **Timeouts, aborts and transport failures.** `PhaseTimeout`, peer Aborts and transport failures are handled as for the receiver (`internal/protocol/session.go:306-324`). When no new polynomial is ready, `evaluate` blocks on `notify` or ctx only (`internal/protocol/sender.go:206-214`). The reader's per-frame `PhaseTimeout` bounds that wait indirectly: a timeout fails the task group, which cancels ctx.
 
-**Erasure.** k_b/8 is erased only on the success path (`internal/protocol/sender.go:101-103`).
+**Erasure.** k_b/8 is erased only after the receiver's Done has arrived and `wait(peerDone)` returns (`internal/protocol/sender.go:98-103`). `body` then returns `s.doneErr` (`internal/protocol/sender.go:104`), so a transcript mismatch usually still erases the keys (unless ctx cancellation wins the `wait` select). Every earlier error return skips the erasure.
 
 ### Data flow
 
@@ -2414,7 +2435,7 @@ How `evaluate` (`internal/protocol/sender.go:199-259`) and `outputs` (`internal/
 | Reader | receiver -> sender: PolyChunk, Done | `internal/protocol/session.go:309` | remote |
 | Reader | `reader` -> `field.Decode` | `internal/protocol/sender.go:345` | direct |
 | Reader | `reader` -> `advance` closure | `internal/protocol/sender.go:351` | func-value |
-| Reader | `advance` -> `ready.Store`, `notify` | `internal/protocol/sender.go:309-317` | goroutine (atomic and channel hand-off) |
+| Reader | `advance` -> `ready.Store`, `notify` | `internal/protocol/sender.go:309-317` | direct (atomic store), then non-blocking channel send read by `evaluate` in the body goroutine |
 | Reader | `reader` -> `session.checkPeerDone` | `internal/protocol/sender.go:357` | direct |
 | Evaluate | `evaluate` -> `newPacker` | `internal/protocol/sender.go:203` | direct |
 | Evaluate | `evaluate` -> `parallel.For` (per instance) | `internal/protocol/sender.go:223` | direct |
@@ -2441,7 +2462,7 @@ How `evaluate` (`internal/protocol/sender.go:199-259`) and `outputs` (`internal/
 
 - [EP-12](ENTRY_POINTS.md#ep-12) Package init functions. The Go runtime runs the math-core initializers before `main` (framework, init). They precompute constants and check them; a failed check panics, so the process exits before `main` runs.
 - [EP-13](ENTRY_POINTS.md#ep-13) Long-lived goroutines. The math core starts worker goroutines in three places: `parallel.For`, `(*poly.Arith).both` and `rns.perPrime`. Each one ends before the call that started it returns.
-- No CLI command or network message calls these packages directly. Every call comes from `internal/protocol`: session setup ([CG-06](#cg-06)), the receiver ([CG-07](#cg-07)) and the sender ([CG-08](#cg-08)). The packages are `internal/poly`, `internal/rns`, `internal/ntt`, `internal/field`, `internal/group`, `internal/elligator`, `internal/hashing` and `internal/parallel`. They do no file, network or environment I/O. Their only side effects are reads from the `io.Reader` they are given (randomness), goroutines, and in-memory caches.
+- No network message calls these packages directly. The only direct call from outside `internal/protocol` is `hashing.ParseAlg`, which the CLI uses to parse the hash name (`internal/cli/party.go:320`, `internal/cli/tools.go:97`). Every other call comes from `internal/protocol`: session setup ([CG-06](#cg-06)), the receiver ([CG-07](#cg-07)) and the sender ([CG-08](#cg-08)). The packages are `internal/poly`, `internal/rns`, `internal/ntt`, `internal/field`, `internal/group`, `internal/elligator`, `internal/hashing` and `internal/parallel`. They do no file, network or environment I/O. Their only side effects are reads from the `io.Reader` they are given (randomness), goroutines, and in-memory caches.
 
 ### Package initialization (EP-12)
 
@@ -2786,7 +2807,7 @@ flowchart LR
 | 53 | `(*session).handshake` -> `SessionID`, `OutputLen`, `NewComparer` | `internal/protocol/session.go:456-458` | direct |
 | 54 | `NewComparer` -> `aes.NewCipher`, `mmo` | `internal/hashing/hashing.go:105`, `internal/hashing/hashing.go:111` | external-lib (stdlib); direct |
 | 55 | `SessionID` -> `sha256.New`; `shaInstance.Append` -> `sha256.Sum256` | `internal/hashing/hashing.go:73`, `internal/hashing/hashing.go:146` | external-lib (stdlib) |
-| 56 | `aesComparer.Instance`, `aesInstance.Append` -> `mmo` -> `Block.Encrypt` | `internal/hashing/hashing.go:163`, `internal/hashing/hashing.go:173-179`, `internal/hashing/hashing.go:190` | direct; external-lib (stdlib) |
+| 56 | `aesComparer.Instance`, `aesInstance.Append` -> `mmo` -> `Block.Encrypt` | `internal/hashing/hashing.go:163`, `internal/hashing/hashing.go:173-179`, `internal/hashing/hashing.go:190` | direct; interface-dispatch (external-lib, stdlib `cipher.Block`) |
 | 57 | `field.HashToField` -> `sha512.New`, `SetWideBytes` | `internal/field/field.go:89`, `internal/field/field.go:94` | external-lib (stdlib); external-lib |
 | 58 | Go runtime -> package initializers (table above) | no source line | framework (init) |
 
@@ -2849,12 +2870,12 @@ flowchart TD
 - **Flag checks.** bench needs n1, n2 >= 0, instances >= 1 and 0 <= overlap <= 1; otherwise it exits with ExitUsage (`internal/cli/tools.go:94-96`). A `hashing.ParseAlg` failure also gives ExitUsage (`internal/cli/tools.go:97-100`). `--ntt-backend` is not checked here. An unknown backend name fails inside both runs, in `protocol.newSession` through `rns.NewBackend` (`internal/protocol/session.go:174`, `internal/rns/rns.go:289`). bench then reports `bench failed` with exit 5, not exit 1.
 - **Data.** `benchSets` gets n2 as the receiver total and n1 as the sender total, splits each over the instances, and gives the remainder to the first instances (`internal/cli/tools.go:168-169`). The first `min(int(overlap*nr), ns)` sender items in each instance are copies of receiver items (`internal/cli/tools.go:170-182`). Instance IDs are 0 to instances-1 (`internal/cli/tools.go:183-185`).
 - **Config.** Only `Hash`, `Workers` and `NTTBackend` are set (`internal/cli/tools.go:102`). Every other field comes from `Config.Defaults` (`internal/protocol/session.go:60-103`). Both parties use the same `--workers` value on the same CPUs.
-- **One side fails.** Each goroutine closes its own `PipeConn` end when its run returns (`internal/cli/tools.go:115`, `internal/cli/tools.go:120`). After that, the peer's `Send` returns `io.ErrClosedPipe`, and its `Recv` returns `io.EOF` once the queued frames are read (`internal/protocol/conn.go:36-78`). So the other run ends too, and `wg.Wait` returns. If either run returned an error, bench returns an `exitError` with ExitInternal that includes both errors (`internal/cli/tools.go:125-127`).
+- **One side fails.** Each goroutine closes its own `PipeConn` end when its run returns (`internal/cli/tools.go:115`, `internal/cli/tools.go:120`). Before that, if the failing side had started its session and the error is not a transport error or a peer abort, `session.run` sends an `Abort` frame directly on the conn (best effort, 5 s bound; `internal/protocol/session.go:243-248`, `internal/protocol/errors.go:78-91`), so the peer usually fails with a remote abort from `(*session).recv` (`internal/protocol/session.go:322-323`). After the close, the peer's `Send` returns `io.ErrClosedPipe`, and its `Recv` returns `io.EOF` once the queued frames are read (`internal/protocol/conn.go:36-78`). So the other run ends too, and `wg.Wait` returns. If either run returned an error, bench returns an `exitError` with ExitInternal that includes both errors (`internal/cli/tools.go:125-127`).
 - **Output.**
   - The intersection count is the sum of `len(Matches)` over `res.Instances` (`internal/cli/tools.go:128-131`).
   - `printPhases` writes each side's phases, with `total` first (`internal/cli/tools.go:152-158`).
   - The last row shows each side's `Stats.BytesSent` (`internal/cli/tools.go:137`), which is filled in at the end of `session.run` (`internal/protocol/session.go:237`).
-  - A `Flush` error is returned unchanged (`internal/cli/tools.go:138`).
+  - A `Flush` error is returned unchanged (`internal/cli/tools.go:138`). Because it is neither an `exitError` nor a protocol error, `cli.Run` maps it to ExitUsage, exit 1 (`internal/cli/root.go:95-100`).
 - **Signals.** bench installs no signal handler; the party and serve commands do (`internal/cli/party.go:181`, `internal/cli/serve.go:95`). `main` passes `context.Background()` (`cmd/minipsi/main.go:12`). Ctrl-C therefore kills the process through Go's default signal handling, and no partial table is printed.
 - **Test-only.** `TestToolCommands` runs bench with `--n1 300 --n2 200 --instances 3 --overlap 0.5`, checks the intersection row, and checks two usage failures (`internal/cli/cli_test.go:296-310`).
 
@@ -2874,7 +2895,7 @@ flowchart TD
 | 10 | RunE -> sender goroutine | `internal/cli/tools.go:118` | goroutine |
 | 11 | sender goroutine -> `protocol.RunSender(cmd.Context(), cfg, b, sinst)` | `internal/cli/tools.go:121` | direct |
 | 12 | sender goroutine -> `(*PipeConn).Close` | `internal/cli/tools.go:120` | deferred |
-| 13 | `(*session).writer` -> `Conn.Send`, here `(*PipeConn).Send` | `internal/protocol/session.go:283` | interface-dispatch |
+| 13 | `(*session).writer` -> `Conn.Send`, here `(*PipeConn).Send`; on failure `(*session).run` also sends the `Abort` frame directly | `internal/protocol/session.go:283`, `internal/protocol/session.go:247` | interface-dispatch |
 | 14 | `(*session).recv` -> `Conn.Recv`, here `(*PipeConn).Recv` | `internal/protocol/session.go:309` | interface-dispatch |
 | 15 | RunE -> `sync.WaitGroup.Wait` | `internal/cli/tools.go:123` | direct |
 | 16 | RunE -> `printPhases` for the receiver and the sender | `internal/cli/tools.go:135-136` | direct |
@@ -2993,7 +3014,7 @@ flowchart TD
 - **Creating the files.** `createOnce` does nothing if the final directory already exists (`internal/devcerts/devpki.go:122-126`). Otherwise it fills a `.tmp-` directory in the parent and renames it into place. If the rename fails because another process has already created the directory, it uses that process's files (`internal/devcerts/devpki.go:127-141`). This way, processes that start at the same time end up with the same CA. Because `createOnce` treats an existing directory as finished, it does not repair an empty or partial `ca/` or `parties/<name>/`.
 - **Checks.** After creation, `EnsureDev` checks that the CA signed the party certificate and that neither certificate has expired. Both failures tell the user to delete the directory (`internal/devcerts/devpki.go:105-115`). `key.pem` is not read here; `transport.LoadTLSFiles` loads it later (`internal/cli/party.go:352`).
 - **Result.** On success, `resolveDev` sets `TLS.Cert`, `TLS.Key` and `TLS.CA` to the file paths and logs a DEV MODE warning (`internal/cli/party.go:399-400`). Any error gives ExitUsage (`internal/cli/party.go:271-273`, `internal/cli/serve.go:107-109`).
-- **Test-only.** `TestEnsureDev` (`internal/devcerts/devpki_test.go:12`) and `TestToolCommands` (`internal/cli/cli_test.go:275`) exercise these paths.
+- **Test-only.** `TestEnsureDev` (`internal/devcerts/devpki_test.go:12`), `TestDefaultDevDir` (`internal/devcerts/devpki_test.go:96`) and `TestIsLoopback` (`internal/devcerts/devpki_test.go:113`) cover `devcerts`. `TestDevMode` (`internal/cli/serve_test.go:220`) runs serve, request, sender and receiver with `--dev`, including the usage failures. `TestToolCommands` (`internal/cli/cli_test.go:275`) covers only `certs dev`.
 
 ### Source references
 

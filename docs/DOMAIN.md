@@ -314,7 +314,7 @@ The codes are defined at `internal/protocol/errors.go:13` `CodeProtocol`. The `E
 
 | Kind | How it arises | Abort sent? | Source |
 |---|---|---|---|
-| Local `*Error` | This party detected the problem | Yes, with its code and `Msg` | `internal/protocol/errors.go:88` `Abort` |
+| Local `*Error` | This party detected the problem | Yes, with its code and `Msg`, once the session has started. A `checkOwn` failure (`ERR_LIMIT`, `ERR_INPUT`) is a local `*Error` returned before the session starts and sends nothing | `internal/protocol/errors.go:88` `Abort`, `internal/protocol/receiver.go:57` `checkOwn` |
 | Remote `*Error` | The peer sent an `Abort`; `Remote` is true | No | `internal/protocol/session.go:323` `Remote` |
 | `TransportError` | The `Conn` failed: peer gone, stream closed | No | `internal/protocol/errors.go:68` `TransportError` |
 | Plain error | Anything else on a session goroutine | Yes, as `ERR_INTERNAL` "internal error" | `internal/protocol/errors.go:90` `CodeInternal` |
