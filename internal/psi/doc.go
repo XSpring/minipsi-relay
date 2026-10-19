@@ -31,8 +31,8 @@
 //
 // # Session lifecycle
 //
-// Call Engine.Check before asking the orchestrator for a session, then Engine.OpenReceiver or
-// Engine.OpenSender as soon as the orchestrator has assigned the session ID, so that the peer's
+// The orchestrator starts a session by sending each CC the session ID and its role. Call
+// Engine.Check first, then Engine.OpenReceiver or Engine.OpenSender at once, so that the peer's
 // first messages are buffered until Run starts. Call Run promptly: a party sends its first
 // message only when Run starts, and the peer's handshake timeout is already running. Run the
 // session once with Run, and call Close when done. Closing a session whose Run was never called

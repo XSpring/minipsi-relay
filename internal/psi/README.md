@@ -79,9 +79,10 @@ sequenceDiagram
     participant R as CC1 service (receiver)
     participant O as Orchestrator
     participant S as CC2 service (sender)
+    O-->>R: session_id, role
+    O-->>S: session_id, role
     R->>R: Engine.Check(RoleReceiver, items)
-    O-->>R: session_id
-    O-->>S: session_id
+    S->>S: Engine.Check(RoleSender, items)
     R->>R: Engine.OpenReceiver(session_id, outbox)
     S->>S: Engine.OpenSender(session_id, outbox)
     R->>R: session.Run(ctx, items)
@@ -98,8 +99,9 @@ sequenceDiagram
 
 Steps for one party:
 
-1. `Engine.Check(role, items)`: reject bad input before asking the ORC for a session.
-2. Get a `session_id` from the ORC.
+1. The ORC starts the session: it sends each CC the `session_id` and its role.
+2. `Engine.Check(role, items)`: reject bad input before any message is sent. On failure, tell
+   the ORC that this CC cannot run the session, and do not open it.
 3. Create a new `Outbox` for this session, then call `Engine.OpenReceiver(id, outbox)` or
    `Engine.OpenSender(id, outbox)` as soon as the ID is known. From now on, messages from the
    peer are kept until `Run` starts.
@@ -120,19 +122,14 @@ type MatchService struct {
 	// is safe for concurrent use.
 	client *http.Client
 	orcURL string // where outbound messages are posted
-	// newSession asks the orchestrator for a session ID (the service's own HTTP call).
-	newSession func(ctx context.Context) (string, error)
 }
 
-func (s *MatchService) RunReceiver(ctx context.Context, items [][]byte) ([][]byte, error) {
-	// 1. Check first: no session exists yet, so a failure needs no cleanup and the peer is
-	// never involved.
+// RunReceiver is called when the orchestrator starts a session in which this CC is the
+// receiver (step 1); sessionID comes from the orchestrator.
+func (s *MatchService) RunReceiver(ctx context.Context, sessionID string, items [][]byte) ([][]byte, error) {
+	// 2. Check first: no message has been sent yet, so a failure needs no cleanup. The caller
+	// tells the orchestrator that this CC cannot run the session.
 	if err := s.engine.Check(psi.RoleReceiver, items); err != nil {
-		return nil, err
-	}
-	// 2. Only now ask the orchestrator for a session.
-	sessionID, err := s.newSession(ctx)
-	if err != nil {
 		return nil, err
 	}
 	// 3. Create an Outbox for this session and open at once, so that the peer's first

@@ -86,7 +86,7 @@ type Outbox interface {
 // Engine runs PSI sessions. Implementations are safe for concurrent use.
 type Engine interface {
 	// Check validates items for role without any network activity, so that a service can
-	// reject a request before it asks the orchestrator for a session. It applies the same
+	// refuse a session that the orchestrator started before any message is sent. It applies the same
 	// rules as Run: exact duplicate items are dropped first, keeping the first occurrence, and
 	// the limits apply to the distinct items after padding. It does not hash the items, so the
 	// receiver's Run can still fail with ErrInput when two items collide. A failure, including

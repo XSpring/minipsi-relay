@@ -29,7 +29,7 @@ later changes.
 
 - Package `internal/psi` is the port layer. Services import only this package, and it imports
   only the standard library (checked by a test), so services cannot reach core types.
-- `Engine` has four methods: `Check` validates items before a session is requested;
+- `Engine` has four methods: `Check` validates items before any message is sent;
   `OpenReceiver` and `OpenSender` register the ORC's session ID so that the peer's first
   messages are buffered before `Run`; `Deliver` takes one inbound message pushed by the ORC.
 - `ReceiverSession` and `SenderSession` have `Run` (called once, blocking, canceled through
