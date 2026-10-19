@@ -48,7 +48,8 @@ The same idea in a more familiar shape:
 
 | File | What it holds |
 |---|---|
-| `psi.go` | The interfaces `Engine`, `ReceiverSession`, `SenderSession` and `Outbox`; the `Message` struct; `Role`; `ValidSessionID` and the size limits |
+| `psi.go` | What a service calls: the interfaces `Engine`, `ReceiverSession` and `SenderSession`; `Role` |
+| `message.go` | How messages travel to and from the orchestrator: the `Message` struct, the `Outbox` interface the service implements, `ValidSessionID` and the size limits |
 | `errors.go` | The error values a service checks with `errors.Is`, and the `Error` type |
 | `result.go` | What `Run` returns: `ReceiverResult`, `SenderResult`, `Stats` |
 | `doc.go` | The package documentation (`go doc ./internal/psi`) |
@@ -230,7 +231,7 @@ only after the receiving CC has opened the session. Retries may be added in a la
 
 1. Create a new folder, for example `internal/psi/otherpsi`.
 2. Implement `psi.Engine`, `psi.ReceiverSession` and `psi.SenderSession` there, following the
-   contracts written in `psi.go`. The message payload format is yours to choose; services
+   contracts written in `psi.go` and `message.go`. The message payload format is yours to choose; services
    never read it.
 3. In `main`, create the new engine instead of the old one.
 

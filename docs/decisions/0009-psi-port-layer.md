@@ -73,11 +73,11 @@ later changes.
 
 ## Evidence
 
-- `internal/psi/psi.go:19` (`ValidSessionID`) and `internal/psi/psi.go:67` (`Message`):
+- `internal/psi/message.go:47` (`ValidSessionID`) and `internal/psi/message.go:18` (`Message`):
   routing fields and opaque payload.
-- `internal/psi/psi.go:82` (`Outbox`): implemented by the service.
-- `internal/psi/psi.go:87` (`Engine`): `Check`, `OpenReceiver`, `OpenSender`, `Deliver`.
-- `internal/psi/psi.go:120` (`ReceiverSession`) and `internal/psi/psi.go:137` (`SenderSession`).
+- `internal/psi/message.go:33` (`Outbox`): implemented by the service.
+- `internal/psi/psi.go:31` (`Engine`): `Check`, `OpenReceiver`, `OpenSender`, `Deliver`.
+- `internal/psi/psi.go:64` (`ReceiverSession`) and `internal/psi/psi.go:81` (`SenderSession`).
 - `internal/psi/errors.go:10` (session failure kinds) and `internal/psi/errors.go:36` (registry
   and message errors); `internal/psi/errors.go:49` (`Error`).
 - `internal/protocol/conn.go:12` (`Conn`): the ordered frame stream the adapter implements.

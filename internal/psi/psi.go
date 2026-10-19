@@ -2,44 +2,17 @@ package psi
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 )
-
-// MaxMessageBytes is the largest JSON encoding of a Message that an Engine produces or
-// accepts. Inbound handlers and the orchestrator must accept bodies of this size.
-const MaxMessageBytes = 8 << 20
-
-// MaxSessionIDLen is the longest session ID that an Engine accepts (see ValidSessionID).
-const MaxSessionIDLen = 128
-
-// ValidSessionID reports whether id is a valid session ID: 1 to MaxSessionIDLen bytes, each an
-// ASCII letter, digit, '-', '_', '.' or ':'. Engines refuse other values with ErrMalformed,
-// which also keeps session IDs safe to write into logs.
-func ValidSessionID(id string) bool {
-	if len(id) == 0 || len(id) > MaxSessionIDLen {
-		return false
-	}
-	for i := 0; i < len(id); i++ {
-		c := id[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-		case c == '-', c == '_', c == '.', c == ':':
-		default:
-			return false
-		}
-	}
-	return true
-}
 
 // Role is the part a party plays in a session.
 type Role uint8
 
 const (
-	// RoleReceiver learns the intersection.
-	RoleReceiver Role = 1
 	// RoleSender helps compute the intersection and learns nothing about it.
 	RoleSender Role = 2
+	// RoleReceiver learns the intersection.
+	RoleReceiver Role = 1
 )
 
 // String returns "receiver", "sender", or "Role(n)" for any other value n.
@@ -54,43 +27,14 @@ func (r Role) String() string {
 	}
 }
 
-// Message is one protocol message of one session, exchanged between a CC and the
-// orchestrator. The Engine fills every field of an outbound message; services pass an inbound
-// message to Engine.Deliver unchanged.
-//
-// SessionID is assigned by the orchestrator and must satisfy ValidSessionID. Seq numbers the
-// messages that one party sends in a session, from 1 without gaps; the receiving Engine checks
-// it, so a lost, repeated or reordered message ends the session. Kind names the payload type,
-// for logs only. Payload is JSON defined by the Engine implementation; services and the
-// orchestrator treat it as opaque, forward it unchanged and never log it. An Engine does not
-// modify a Message after passing it to Outbox.Post.
-type Message struct {
-	SessionID string          `json:"session_id"`
-	Seq       uint64          `json:"seq"`
-	Kind      string          `json:"kind"`
-	Payload   json.RawMessage `json:"payload"`
-}
-
-// Outbox sends the messages of a session to the orchestrator. The service implements it, for
-// example with an HTTP POST, and usually creates a new Outbox for each session.
-//
-// The Engine never calls Post concurrently for one session; it calls it in Seq order, one
-// message at a time. If one Outbox is passed to several sessions, Post may be called
-// concurrently and must be safe for concurrent use. Post returns nil only after the
-// orchestrator has accepted m. Any error ends the session: the Engine does not retry, and Run
-// returns an *Error with Kind ErrDelivery. Post must return promptly once ctx is done.
-type Outbox interface {
-	Post(ctx context.Context, m *Message) error
-}
-
 // Engine runs PSI sessions. Implementations are safe for concurrent use.
 type Engine interface {
 	// Check validates items for role without any network activity, so that a service can
-	// refuse a session that the orchestrator started before any message is sent. It applies the same
-	// rules as Run: exact duplicate items are dropped first, keeping the first occurrence, and
-	// the limits apply to the distinct items after padding. It does not hash the items, so the
-	// receiver's Run can still fail with ErrInput when two items collide. A failure, including
-	// an invalid role, is an *Error with Kind ErrInput.
+	// refuse a session that the orchestrator started before any message is sent. It applies
+	// the same rules as Run: exact duplicate items are dropped first, keeping the first
+	// occurrence, and the limits apply to the distinct items after padding. It does not hash
+	// the items, so the receiver's Run can still fail with ErrInput when two items collide. A
+	// failure, including an invalid role, is an *Error with Kind ErrInput.
 	Check(role Role, items [][]byte) error
 
 	// OpenReceiver registers sessionID, assigned by the orchestrator, for this party as the
