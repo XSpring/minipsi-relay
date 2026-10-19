@@ -118,7 +118,7 @@ in `internal/config`, gRPC and protobuf in `internal/transport` and `internal/ge
 | `internal/cli` | Cobra commands, config precedence, wiring of input, transport and protocol, exit-code mapping, daemon accept loop | `Run` `internal/cli/root.go:88`, `exitCode` `internal/cli/root.go:38`, `runParty` `internal/cli/party.go:237`, `runServe` `internal/cli/serve.go:104` |
 | `internal/config` | Party and daemon configuration: defaults, strict YAML, flag overlay, validation | `Config` `internal/config/config.go:21`, `Serve` `internal/config/serve.go:18` |
 | `internal/itemio` | Read input sets (lines or CSV, per-instance dedup), write results atomically | `Input` `internal/itemio/itemio.go:41`, `WriteResult` `internal/itemio/itemio.go:231` |
-| `internal/psi` | Port layer that business services import instead of the PSI core; interfaces and types only, standard library only (ADR-0009) | `Engine` `internal/psi/psi.go:87`, `Message` `internal/psi/psi.go:67`, `Error` `internal/psi/errors.go:55` |
+| `internal/psi` | Port layer that business services import instead of the PSI core; interfaces and types only, standard library only (ADR-0009) | `Engine` `internal/psi/psi.go:87`, `Message` `internal/psi/psi.go:67`, `Error` `internal/psi/errors.go:49` |
 | `internal/report` | JSON run report with no item data | `Report` `internal/report/report.go:14` |
 | `internal/devcerts` | Throw-away X.509 CA and leaves for tests, `certs dev` and `--dev` | `EnsureDev` `internal/devcerts/devpki.go:50`, `IsLoopback` `internal/devcerts/devpki.go:182` |
 | `internal/version` | Build stamps and the wire compatibility constants | `ProtocolVersion` `internal/version/version.go:13` |

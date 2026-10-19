@@ -66,7 +66,7 @@ service everything listed above.
 | `Outbox` | interface | the service | `Post` one outbound message to the orchestrator |
 | `Message` | struct | - | one protocol message: `session_id`, `seq`, `kind`, `payload` (JSON) |
 | `ReceiverResult`, `SenderResult`, `Stats` | struct | - | the result of `Run` |
-| `ErrTimeout`, `ErrBusy`, ... and `Error` | errors | - | what went wrong, and whether to retry |
+| `ErrTimeout`, `ErrBusy`, ... and `Error` | errors | - | what went wrong |
 
 ## How a session runs
 
@@ -100,8 +100,9 @@ Steps for one party:
 
 1. `Engine.Check(role, items)`: reject bad input before asking the ORC for a session.
 2. Get a `session_id` from the ORC.
-3. `Engine.OpenReceiver(id, outbox)` or `Engine.OpenSender(id, outbox)`, as soon as the ID is
-   known. From now on, messages from the peer are kept until `Run` starts.
+3. Create a new `Outbox` for this session, then call `Engine.OpenReceiver(id, outbox)` or
+   `Engine.OpenSender(id, outbox)` as soon as the ID is known. From now on, messages from the
+   peer are kept until `Run` starts.
 4. `session.Run(ctx, items)`: blocks until the session ends. Call it promptly, because the
    peer is already waiting. Cancel `ctx` to stop it.
 5. `session.Close()`: always, for example with `defer`. If `Run` was never called, `Close` also
@@ -115,18 +116,35 @@ Example:
 ```go
 type MatchService struct {
 	engine psi.Engine // given by main; the service does not know which implementation it is
-	orc    psi.Outbox // HTTP client that POSTs to the orchestrator
+	// client is created once in main and shared by all sessions: it reuses connections and
+	// is safe for concurrent use.
+	client *http.Client
+	orcURL string // where outbound messages are posted
+	// newSession asks the orchestrator for a session ID (the service's own HTTP call).
+	newSession func(ctx context.Context) (string, error)
 }
 
-func (s *MatchService) RunReceiver(ctx context.Context, sessionID string, items [][]byte) ([][]byte, error) {
+func (s *MatchService) RunReceiver(ctx context.Context, items [][]byte) ([][]byte, error) {
+	// 1. Check first: no session exists yet, so a failure needs no cleanup and the peer is
+	// never involved.
 	if err := s.engine.Check(psi.RoleReceiver, items); err != nil {
 		return nil, err
 	}
-	sess, err := s.engine.OpenReceiver(sessionID, s.orc)
+	// 2. Only now ask the orchestrator for a session.
+	sessionID, err := s.newSession(ctx)
 	if err != nil {
 		return nil, err
 	}
+	// 3. Create an Outbox for this session and open at once, so that the peer's first
+	// messages are kept until Run starts.
+	out := &orcOutbox{client: s.client, url: s.orcURL}
+	sess, err := s.engine.OpenReceiver(sessionID, out)
+	if err != nil {
+		return nil, err
+	}
+	// 5. Always close; if Run never ran, Close tells the peer to stop waiting.
 	defer sess.Close()
+	// 4. Run the session.
 	res, err := sess.Run(ctx, items)
 	if err != nil {
 		return nil, err // for example errors.Is(err, psi.ErrTimeout)
@@ -137,6 +155,35 @@ func (s *MatchService) RunReceiver(ctx context.Context, sessionID string, items 
 // OnMessage is called by the HTTP handler for every message the orchestrator pushes.
 func (s *MatchService) OnMessage(ctx context.Context, m *psi.Message) error {
 	return s.engine.Deliver(ctx, m)
+}
+
+// orcOutbox posts the messages of one session to the orchestrator. Its fields never change
+// after it is created, and Post keeps everything else in local variables, so it would also be
+// safe if it were shared by several sessions.
+type orcOutbox struct {
+	client *http.Client
+	url    string
+}
+
+func (o *orcOutbox) Post(ctx context.Context, m *psi.Message) error {
+	body, err := json.Marshal(m) // a new body for every call
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := o.client.Do(req)
+	if err != nil {
+		return err // ends the session (no retries in this version)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("orchestrator: status %d", resp.StatusCode) // ends the session
+	}
+	return nil // accepted
 }
 ```
 
@@ -155,24 +202,21 @@ Errors come in two groups.
 | `ErrPeerAborted` | the peer stopped the session; `Error.Code` says why |
 | `ErrTimeout` | a peer message did not arrive in time |
 | `ErrDelivery` | messages could not be posted to the orchestrator |
-| `ErrCanceled` | the context was cancelled or the session was closed |
+| `ErrCanceled` | the context was canceled or the session was closed |
 | `ErrInternal` | a local failure of the engine |
 
-**Registry and message errors**, returned by `OpenReceiver`, `OpenSender` and `Deliver`. They
-tell the caller, usually the ORC through the HTTP response, whether to send the same message
-again:
+**Registry and message errors**, returned by `OpenReceiver`, `OpenSender` and `Deliver`:
 
-| Error | Retry? | Meaning |
-|---|---|---|
-| `ErrUnknownSession` | yes | the session is not open yet |
-| `ErrOutOfOrder` | yes | the message arrived before an earlier one |
-| `ErrBusy` | yes | too many sessions, or the session's queue is full |
-| `ErrSessionClosed` | no | the session has ended |
-| `ErrMalformed` | no | the message or session ID is invalid; this also ends an open session |
-| `ErrSessionExists` | no | the session ID is already in use |
+| Error | Meaning |
+|---|---|
+| `ErrBusy` | too many sessions are open |
+| `ErrSessionExists` | a session with this ID is already open |
+| `ErrUnknownSession` | no session with this ID is open (not opened yet, or already ended) |
+| `ErrMalformed` | the message or session ID is invalid, or the message is out of sequence; this also ends an open session |
 
-`Deliver` returns nil for an accepted message, and also for an exact duplicate of one, so the
-ORC can safely send a message twice.
+This version has no retries: a failed `Post` or a message that `Deliver` refuses ends the
+session. The orchestrator must therefore deliver every message exactly once and in order, and
+only after the receiving CC has opened the session. Retries may be added in a later version.
 
 ## Design patterns used
 
@@ -183,8 +227,7 @@ ORC can safely send a message twice.
 | **Dependency Injection** (composition root) | `main` creates the adapter (`core.New`, planned) and passes it to the service as a `psi.Engine`; the service passes its `Outbox` to `OpenReceiver` and `OpenSender`. | Only `main` knows which implementation is used; services and tests can use any `Engine`. |
 | **Abstract Factory** | `Engine.OpenReceiver` and `Engine.OpenSender` create `ReceiverSession` and `SenderSession`; the adapter's engine is the concrete factory. | The service never creates a session itself, so it does not depend on the session's concrete type. |
 | **Adapter** | `internal/psi/core` (planned): its receiver and sender wrap `protocol.RunReceiver` and `protocol.RunSender`; its connection turns `Outbox.Post` and `Deliver` into the `protocol.Conn` the core expects. | The existing core stays unchanged; only the adapter knows its types. |
-| **Facade** | `Engine` and `Run` | They hide the handshake, the core configuration, frame chunking, retries and session bookkeeping behind a few simple calls. |
-| **Idempotent Receiver with retry** (messaging) | `Message.Seq`, `Deliver`, `Outbox.Post`, and the retry column above | Messages may be sent more than once; the sequence number keeps them in order and drops exact duplicates. |
+| **Facade** | `Engine` and `Run` | They hide the handshake, the core configuration, frame chunking and session bookkeeping behind a few simple calls. |
 
 ## Adding another PSI implementation
 
@@ -204,4 +247,4 @@ implementation of them and can serve as an example. No service code changes.
 - Never log, report or put into error messages the items given to `Run`, the matching items in
   `ReceiverResult.Matches`, or message payloads. Errors and `Stats` from this package contain
   none of them.
-- Forward `Message` values unchanged. Do not read, re-encode or modify `Payload`.
+- Forward `Message` values unchanged, and never read or modify `Payload`.

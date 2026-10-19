@@ -29,7 +29,7 @@ type Stats struct {
 	DuplicatesRemoved int
 	// MessagesSent is the number of messages accepted by the orchestrator.
 	MessagesSent uint64
-	// MessagesReceived is the number of messages accepted by Deliver, duplicates excluded.
+	// MessagesReceived is the number of messages accepted by Deliver.
 	MessagesReceived uint64
 	// BytesSent is the total payload size of the sent messages.
 	BytesSent int64

@@ -32,25 +32,24 @@ later changes.
 - `Engine` has four methods: `Check` validates items before a session is requested;
   `OpenReceiver` and `OpenSender` register the ORC's session ID so that the peer's first
   messages are buffered before `Run`; `Deliver` takes one inbound message pushed by the ORC.
-- `ReceiverSession` and `SenderSession` have `Run` (called once, blocking, cancelled through
+- `ReceiverSession` and `SenderSession` have `Run` (called once, blocking, canceled through
   the context) and `Close` (idempotent; tells the peer to stop when `Run` never ran).
 - The service implements `Outbox.Post` to send one message to the ORC. The layer calls it in
-  sequence order, one call at a time, and retries the same message after a failure.
+  sequence order, one call at a time.
 - A `Message` is a struct with JSON tags: `session_id` (checked by `ValidSessionID`: 1 to 128
   ASCII letters, digits, `-`, `_`, `.` or `:`), `seq` (per sender, from 1, no gaps), `kind`
-  and an opaque `payload`. Services read only the routing fields and forward the payload byte
-  for byte. The payload format belongs to the adapter.
-- The layer keeps each direction in order. While a session is open, an exact duplicate is
-  accepted again, a conflicting one is refused and ends the session, and a message ahead of
-  its sequence is refused with a retryable error. After the session has ended, every message
-  for it is refused as closed. There is no reorder buffer.
+  and an opaque `payload`. Services read only the session ID and forward the rest unchanged.
+  The payload format belongs to the adapter.
+- No retries in this version: a failed `Post`, or a message that `Deliver` refuses (unknown
+  session, invalid, or out of sequence), ends the session. Retries and duplicate handling may
+  be added later without changing the method signatures. There is no reorder buffer.
 - `Check` and `Run` drop exact duplicate items first, for both roles, and apply the limits to
   the distinct items. On a local failure, including one before the first message, `Run` tells
   the peer to stop (best effort), so the peer does not wait for its handshake timeout.
 - Failures are `*psi.Error` values whose `Kind` is one of eight sentinel errors, a finer split
   of the CLI exit code classes (`exitCode` at `internal/cli/root.go:38`). `Unwrap` returns
-  only `Kind`, so services cannot depend on the adapter's error types. Six more sentinel errors
-  describe registry and message refusals and tell the caller whether to retry.
+  only `Kind`, so services cannot depend on the adapter's error types. Four more sentinel
+  errors describe registry and message refusals.
 - `ReceiverResult.Matches` holds the distinct matching input values; `Stats` holds no items,
   field elements, scalars or protocol outputs.
 
@@ -58,10 +57,10 @@ later changes.
 
 - Services and their tests depend on a small, stable set of interfaces, and the core can be
   replaced or wrapped differently without changing them.
-- The orchestrator must retry a message that `Deliver` refused with a retryable error for at
-  least the handshake timeout, keep each direction of a session in order, forward payloads
-  byte for byte without re-encoding them, assign valid session IDs, and accept bodies of up to
-  `MaxMessageBytes` (8 MiB).
+- The orchestrator must deliver each message of a session exactly once and in order for each
+  direction, deliver to a CC only after that CC has opened the session, forward payloads
+  unchanged, assign valid session IDs, and accept bodies of up to `MaxMessageBytes` (8 MiB).
+  Any delivery failure ends the session.
 - Without message crypto, the orchestrator can read and rewrite every message; the transcript
   digest has no key and does not prevent consistent rewriting. A separate security review is
   needed before production use.
@@ -74,13 +73,13 @@ later changes.
 
 ## Evidence
 
-- `internal/psi/psi.go:18` (`ValidSessionID`) and `internal/psi/psi.go:67` (`Message`):
+- `internal/psi/psi.go:19` (`ValidSessionID`) and `internal/psi/psi.go:67` (`Message`):
   routing fields and opaque payload.
 - `internal/psi/psi.go:82` (`Outbox`): implemented by the service.
 - `internal/psi/psi.go:87` (`Engine`): `Check`, `OpenReceiver`, `OpenSender`, `Deliver`.
-- `internal/psi/psi.go:123` (`ReceiverSession`) and `internal/psi/psi.go:140` (`SenderSession`).
-- `internal/psi/errors.go:10` (session failure kinds) and `internal/psi/errors.go:37` (registry
-  and message errors); `internal/psi/errors.go:55` (`Error`).
+- `internal/psi/psi.go:120` (`ReceiverSession`) and `internal/psi/psi.go:137` (`SenderSession`).
+- `internal/psi/errors.go:10` (session failure kinds) and `internal/psi/errors.go:36` (registry
+  and message errors); `internal/psi/errors.go:49` (`Error`).
 - `internal/protocol/conn.go:12` (`Conn`): the ordered frame stream the adapter implements.
 - `internal/protocol/messages.go:201` (`frameReserve`): room kept in every frame.
 - `internal/protocol/session.go:362` (`handshake`): Hello and Sizes are sent before reading.

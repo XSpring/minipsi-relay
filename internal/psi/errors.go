@@ -23,31 +23,25 @@ var (
 	// ErrTimeout reports that a peer message did not arrive in time, or that the deadline of
 	// the Run context passed.
 	ErrTimeout = errors.New("psi: timed out")
-	// ErrDelivery reports that messages could not be posted to the orchestrator.
+	// ErrDelivery reports that a message could not be posted to the orchestrator.
 	ErrDelivery = errors.New("psi: message delivery failed")
-	// ErrCanceled reports that the Run context was cancelled or the session was closed.
-	ErrCanceled = errors.New("psi: session cancelled")
+	// ErrCanceled reports that the Run context was canceled or the session was closed.
+	ErrCanceled = errors.New("psi: session canceled")
 	// ErrInternal reports a local failure of the engine.
 	ErrInternal = errors.New("psi: internal error")
 )
 
-// Registry and message errors. Engine.OpenReceiver, Engine.OpenSender and Engine.Deliver
-// return them wrapped; Outbox implementations return ErrSessionClosed and ErrMalformed wrapped
-// for refusals that must not be retried.
+// Registry and message errors, returned wrapped by Engine.OpenReceiver, Engine.OpenSender and
+// Engine.Deliver.
 var (
-	// ErrBusy reports that the session limit is reached or the session's inbound queue stayed
-	// full; retry later.
-	ErrBusy = errors.New("psi: busy, retry later")
-	// ErrSessionExists reports that the session ID is open or finished recently.
+	// ErrBusy reports that the session limit is reached.
+	ErrBusy = errors.New("psi: too many sessions")
+	// ErrSessionExists reports that a session with this ID is already open.
 	ErrSessionExists = errors.New("psi: session already exists")
-	// ErrUnknownSession reports that no session with this ID is open yet; retry later.
+	// ErrUnknownSession reports that no session with this ID is open.
 	ErrUnknownSession = errors.New("psi: session not open")
-	// ErrOutOfOrder reports that a message arrived ahead of its sequence; retry later.
-	ErrOutOfOrder = errors.New("psi: message ahead of sequence")
-	// ErrSessionClosed reports that the session has ended; do not retry.
-	ErrSessionClosed = errors.New("psi: session closed")
-	// ErrMalformed reports an invalid or too large message, a message that conflicts with an
-	// accepted one with the same Seq, or an invalid session ID; do not retry.
+	// ErrMalformed reports an invalid or too large message, a message out of sequence, or an
+	// invalid session ID.
 	ErrMalformed = errors.New("psi: malformed message or session ID")
 )
 

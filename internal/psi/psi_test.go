@@ -13,7 +13,7 @@ import (
 )
 
 func TestRoleString(t *testing.T) {
-	for r, want := range map[Role]string{RoleReceiver: "receiver", RoleSender: "sender", 0: "unknown", 9: "unknown"} {
+	for r, want := range map[Role]string{RoleReceiver: "receiver", RoleSender: "sender", 0: "Role(0)", 9: "Role(9)"} {
 		if got := r.String(); got != want {
 			t.Errorf("Role(%d).String() = %q, want %q", r, got, want)
 		}
@@ -82,8 +82,7 @@ func TestErrorUnwrapsKindOnly(t *testing.T) {
 
 func TestSentinelErrorsAreDistinct(t *testing.T) {
 	all := []error{ErrInput, ErrMismatch, ErrProtocol, ErrPeerAborted, ErrTimeout, ErrDelivery,
-		ErrCanceled, ErrInternal, ErrBusy, ErrSessionExists, ErrUnknownSession, ErrOutOfOrder,
-		ErrSessionClosed, ErrMalformed}
+		ErrCanceled, ErrInternal, ErrBusy, ErrSessionExists, ErrUnknownSession, ErrMalformed}
 	seen := map[string]bool{}
 	for i, a := range all {
 		if !strings.HasPrefix(a.Error(), "psi: ") {

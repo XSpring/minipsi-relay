@@ -22,13 +22,12 @@
 //   - inbound: the ORC pushes each message to the CC, and the service passes it unchanged to
 //     Engine.Deliver.
 //
-// Services read only the routing fields (SessionID, Seq, Kind) and forward Payload as it is.
-// The layer keeps each direction in order, drops exact duplicates from retries and rejects
-// conflicting ones, so the orchestrator may retry freely. It assumes that the orchestrator
-// retries a message that Deliver refused with a retryable error (ErrUnknownSession,
-// ErrOutOfOrder, ErrBusy) for at least the handshake timeout, keeps each direction of a session
-// in order, forwards Payload byte for byte without re-encoding it, assigns session IDs that
-// satisfy ValidSessionID, and accepts bodies of up to MaxMessageBytes.
+// Services read only SessionID to route a message and forward the rest unchanged. This version
+// has no retries: a failed Post or a message that Deliver refuses ends the session. The layer
+// therefore assumes that the orchestrator delivers each message of a session exactly once and
+// in order for each direction, delivers a message to a CC only after that CC has opened the
+// session, does not modify Payload, assigns session IDs that satisfy ValidSessionID, and
+// accepts bodies of up to MaxMessageBytes.
 //
 // # Session lifecycle
 //
