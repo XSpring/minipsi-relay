@@ -11,8 +11,9 @@ import (
 //
 // SessionID is assigned by the orchestrator and must satisfy ValidSessionID. Seq numbers the
 // messages that one party sends in a session, from 1 without gaps; the receiving Engine checks
-// it, so a lost, repeated or reordered message ends the session. Kind names the payload type,
-// for logs only. Payload is JSON defined by the Engine implementation; services and the
+// it, so a lost, repeated or reordered message ends the session. Kind names the payload type;
+// the Engine needs it to decode Payload, so services and the orchestrator forward it unchanged.
+// Kind is safe to log. Payload is JSON defined by the Engine implementation; services and the
 // orchestrator treat it as opaque, forward it unchanged and never log it. An Engine does not
 // modify a Message after passing it to Outbox.Post.
 type Message struct {
