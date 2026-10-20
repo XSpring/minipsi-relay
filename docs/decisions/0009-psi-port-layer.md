@@ -10,8 +10,8 @@ later changes.
 
 ## Context
 
-- Business services must run PSI sessions. Their controllers will use HTTP first and gRPC
-  later, so the service code must not depend on a wire protocol.
+- Business services must run PSI sessions. Their handlers (`internal/handler`, planned) will
+  use HTTP first and gRPC later, so the service code must not depend on a wire protocol.
 - The only entry points today are `protocol.RunReceiver`, `protocol.RunSender` and
   `protocol.Conn`, plus the gRPC transport. They expose core types (frames, `hashing.Alg`,
   `protocol.Config`, instance indices) and assume a direct connection between the parties.

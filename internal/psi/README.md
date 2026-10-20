@@ -22,15 +22,31 @@ yet.
 
 ```mermaid
 flowchart TD
-    C["Controller (HTTP now, gRPC later)"] --> S["Service, for example psi_service.go"]
+    H["internal/handler (placeholder)<br/>handler.go: HTTP endpoints the ORC calls; gRPC later"] -->|calls| S["internal/service (placeholder)<br/>psi_service.go: Check, Open, Run, Close"]
     S -->|"calls Engine, ReceiverSession, SenderSession"| P["internal/psi (port: interfaces and types)"]
+    O["internal/service/orc_outbox.go (placeholder)<br/>HTTP client to the orchestrator"] -.->|implements Outbox| P
     A["internal/psi/core (adapter, planned)"] -.->|implements| P
-    S -.->|"implements Outbox (HTTP client to the orchestrator)"| P
     A -->|calls| K["internal/protocol (existing PSI core)"]
+```
+
+Where the code goes. `internal/handler` and `internal/service` exist as placeholders with no code
+yet; the adapter `internal/psi/core` is added in its own branch:
+
+```
+internal/
+  handler/          HTTP endpoints the ORC calls (gRPC later)
+    handler.go      NewHandler(svc) http.Handler: POST /v1/messages
+  service/          business logic
+    psi_service.go  PSIService: Check, Open, Run, Close; inbound messages to Deliver
+    orc_outbox.go   Outbox implementation: HTTP POST to the ORC
+  psi/              port: interfaces and types
+  psi/core/         adapter over internal/protocol
 ```
 
 Read the arrows like this:
 
+- The handler receives HTTP requests, calls the service and turns its errors into HTTP status
+  codes. It holds no PSI logic.
 - The service calls the interfaces of the port. It never sees the adapter or the core.
 - The adapter implements those interfaces and calls the core.
 - The service also implements one interface of the port, `Outbox`, because the PSI needs a way
@@ -40,7 +56,8 @@ The same idea in a more familiar shape:
 
 | Usual app | PSI |
 |---|---|
-| `UserService` | your service, for example `psi_service.go` |
+| `UserController` | `internal/handler/handler.go` (in Go it is called a handler) |
+| `UserService` | `internal/service/psi_service.go` |
 | `UserRepository` (interface) | `internal/psi` (port) |
 | `PostgresUserRepository` (implementation) | `internal/psi/core` (adapter) |
 
@@ -111,13 +128,13 @@ Steps for one party:
 5. `session.Close()`: always, for example with `defer`. If `Run` was never called, `Close` also
    tells the peer to stop waiting.
 
-Meanwhile, the HTTP handler that receives the ORC's POSTs passes each message unchanged to
-`Engine.Deliver`.
+Meanwhile, the HTTP handler (`internal/handler`) that receives the ORC's POSTs passes each
+message unchanged to the service, which hands it to `Engine.Deliver`.
 
-Example:
+Example, the service (`internal/service/psi_service.go` and `orc_outbox.go`):
 
 ```go
-type MatchService struct {
+type PSIService struct {
 	engine psi.Engine // given by main; the service does not know which implementation it is
 	// client is created once in main and shared by all sessions: it reuses connections and
 	// is safe for concurrent use.
@@ -127,7 +144,7 @@ type MatchService struct {
 
 // RunReceiver is called when the orchestrator starts a session in which this CC is the
 // receiver (step 1); sessionID comes from the orchestrator.
-func (s *MatchService) RunReceiver(ctx context.Context, sessionID string, items [][]byte) ([][]byte, error) {
+func (s *PSIService) RunReceiver(ctx context.Context, sessionID string, items [][]byte) ([][]byte, error) {
 	// 2. Check first: no message has been sent yet, so a failure needs no cleanup. The caller
 	// tells the orchestrator that this CC cannot run the session.
 	if err := s.engine.Check(psi.RoleReceiver, items); err != nil {
@@ -151,7 +168,7 @@ func (s *MatchService) RunReceiver(ctx context.Context, sessionID string, items 
 }
 
 // OnMessage is called by the HTTP handler for every message the orchestrator pushes.
-func (s *MatchService) OnMessage(ctx context.Context, m *psi.Message) error {
+func (s *PSIService) OnMessage(ctx context.Context, m *psi.Message) error {
 	return s.engine.Deliver(ctx, m)
 }
 
@@ -184,6 +201,57 @@ func (o *orcOutbox) Post(ctx context.Context, m *psi.Message) error {
 	return nil // accepted
 }
 ```
+
+## HTTP handler (planned)
+
+The handler (`internal/handler/handler.go`) declares the endpoints the ORC calls and passes each
+request to the service:
+
+```go
+type Handler struct {
+	svc *service.PSIService // injected by main
+}
+
+// NewHandler returns the HTTP endpoints of this CC.
+func NewHandler(svc *service.PSIService) http.Handler {
+	h := &Handler{svc: svc}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/messages", h.postMessage)
+	return mux
+}
+
+// postMessage receives one message pushed by the orchestrator.
+func (h *Handler) postMessage(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, psi.MaxMessageBytes)
+	var m psi.Message
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		http.Error(w, "malformed message", http.StatusBadRequest)
+		return
+	}
+	switch err := h.svc.OnMessage(r.Context(), &m); {
+	case err == nil:
+		w.WriteHeader(http.StatusAccepted)
+	case errors.Is(err, psi.ErrUnknownSession):
+		http.Error(w, "unknown session", http.StatusNotFound)
+	case errors.Is(err, psi.ErrMalformed):
+		http.Error(w, "malformed message", http.StatusBadRequest)
+	default:
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
+}
+```
+
+Go practice for handlers:
+
+- Use the standard library: `net/http` with the method patterns of Go 1.22
+  (`"POST /v1/messages"`). No web framework, so no new dependency.
+- Keep the handler thin: decode the request, call the service, turn errors into status codes
+  with `errors.Is`. The PSI logic stays in the service.
+- Limit the body to `psi.MaxMessageBytes` with `http.MaxBytesReader`, and pass `r.Context()`
+  so that a closed connection cancels the work.
+- Error responses carry fixed text only, never items or payloads.
+- Inject the service through `NewHandler`, and test the handler with `net/http/httptest`.
+- gRPC later is another handler that calls the same service; the service does not change.
 
 ## Handling errors
 
@@ -221,7 +289,7 @@ only after the receiving CC has opened the session. Retries may be added in a la
 | Pattern | Where | Why |
 |---|---|---|
 | **Ports and Adapters** (hexagonal architecture) | Port: `internal/psi`. Adapter: `internal/psi/core` (planned). `Outbox` is a port in the other direction: the core calls out, the service implements it. | Services depend on a small, stable contract; the PSI implementation can be replaced without touching them. |
-| **Service Layer** | Your service, for example `psi_service.go`, between the controller and `psi.Engine` | Keeps HTTP or gRPC details in the controller and PSI details behind the port. |
+| **Service Layer** | `internal/service/psi_service.go`, between the handler (`internal/handler`) and `psi.Engine` | Keeps HTTP or gRPC details in the handler and PSI details behind the port. |
 | **Dependency Injection** (composition root) | `main` creates the adapter (`core.New`, planned) and passes it to the service as a `psi.Engine`; the service passes its `Outbox` to `OpenReceiver` and `OpenSender`. | Only `main` knows which implementation is used; services and tests can use any `Engine`. |
 | **Abstract Factory** | `Engine.OpenReceiver` and `Engine.OpenSender` create `ReceiverSession` and `SenderSession`; the adapter's engine is the concrete factory. | The service never creates a session itself, so it does not depend on the session's concrete type. |
 | **Adapter** | `internal/psi/core` (planned): its receiver and sender wrap `protocol.RunReceiver` and `protocol.RunSender`; its connection turns `Outbox.Post` and `Deliver` into the `protocol.Conn` the core expects. | The existing core stays unchanged; only the adapter knows its types. |
