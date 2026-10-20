@@ -19,6 +19,8 @@ API). Module `github.com/XSpring/minipsi`, Go 1.26 in go.mod, CI and Docker buil
 | `internal/config` | defaults, strict YAML loading, validation |
 | `internal/protocol` | the PSI protocol: session, handshake, receiver, sender, frames, error codes |
 | `internal/transport` | gRPC over mutual TLS 1.3, one bidi stream per session |
+| `internal/psi` | port layer that business services import instead of the PSI core (ADR-0009); standard library only |
+| `internal/handler`, `service` | HTTP endpoints the orchestrator calls, and the CC's business logic over `internal/psi`; placeholders, no code yet |
 | `internal/field`, `hashing`, `group`, `elligator` | GF(2^255-19), hashes, edwards25519 group, Elligator2 |
 | `internal/ntt`, `rns`, `poly`, `parallel` | NTT, RNS multiplication, polynomial interpolation and evaluation, worker loops |
 | `internal/itemio`, `report`, `devcerts`, `version` | input/output files, JSON reports, test certificates, build info |
