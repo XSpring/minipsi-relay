@@ -10,6 +10,7 @@ const (
 	CodeInvalidState   ProblemCode = "invalid_state"   // 409
 	CodeTooLarge       ProblemCode = "too_large"       // 413
 	CodeMisrouted      ProblemCode = "misrouted"       // 422
+	CodeInternal       ProblemCode = "internal"        // 500
 	CodeUnavailable    ProblemCode = "unavailable"     // 503
 )
 

@@ -3,5 +3,5 @@
 // messages that the orchestrator pushes to Engine.Deliver. See internal/psi/README.md, "How a
 // session runs".
 //
-// Placeholder: no code yet.
+// Placeholder: only the errors the handler maps (errors.go) exist so far.
 package service
