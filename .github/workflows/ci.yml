@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.27.2" # keep in step with the toolchain used for development
+  GO_VERSION: "1.27.3" # keep in step with the toolchain used for development
 
 jobs:
   lint:

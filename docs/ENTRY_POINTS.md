@@ -23,7 +23,7 @@ Companion document: [CALL_GRAPHS.md](CALL_GRAPHS.md) (call graphs CG-01 to CG-11
 
 | Area | What is used | Where it shows |
 |---|---|---|
-| Language | Go. `go.mod` declares `go 1.26.0`. CI and the Docker build use Go 1.27.2 | .github/workflows/ci.yml:20, Dockerfile:6 |
+| Language | Go. `go.mod` declares `go 1.26.0`. CI and the Docker build use Go 1.27.3 | .github/workflows/ci.yml:20, Dockerfile:6 |
 | CLI | `github.com/spf13/cobra` v1.10.2 with `spf13/pflag` | internal/cli/root.go:73 |
 | RPC | `google.golang.org/grpc` v1.84.0 and `google.golang.org/protobuf` v1.36.12. The schema is api/minipsi/v1/psi.proto:10. The generated code lives in `internal/gen/minipsiv1` and is regenerated with buf (`make proto`) | Makefile:64-66 |
 | Transport security | `crypto/tls`: TLS 1.3 with client certificates on both sides | internal/transport/tls.go:52, internal/transport/tls.go:65 |

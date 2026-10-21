@@ -10,7 +10,7 @@ between two hosts over gRPC with mutual TLS 1.3. Only the receiver learns the in
 Usage is in README.md, operations in RUNBOOK.md, and the technical documentation in docs/.
 
 One static binary is built from `cmd/minipsi`; all code lives under `internal/` (no public Go
-API). Module `github.com/XSpring/minipsi`, Go 1.26 in go.mod, CI and Docker build with Go 1.27.2.
+API). Module `github.com/XSpring/minipsi`, Go 1.26 in go.mod, CI and Docker build with Go 1.27.3.
 
 | Path | Contents |
 |---|---|

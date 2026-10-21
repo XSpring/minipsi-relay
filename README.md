@@ -23,7 +23,7 @@ How to deploy and operate it: [RUNBOOK.md](RUNBOOK.md). All flags: `minipsi <com
 
 | Area | Choice |
 |---|---|
-| Language | Go (module `github.com/XSpring/minipsi`, `go 1.26.0`; CI and image use Go 1.27.2) |
+| Language | Go (module `github.com/XSpring/minipsi`, `go 1.26.0`; CI and image use Go 1.27.3) |
 | CLI and config | spf13/cobra, spf13/pflag, gopkg.in/yaml.v3 |
 | Transport | gRPC over HTTP/2 with mutual TLS 1.3, protobuf schema in `api/minipsi/v1` (generated with buf) |
 | Cryptography | filippo.io/edwards25519, Elligator2, SHA-256 or AES from the Go standard library |
