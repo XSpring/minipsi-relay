@@ -1,0 +1,1 @@
+{"session_id":"s-20261020-0001","cc_id":"cc1","peer_cc_id":"cc2","role":"receiver","contract_ref":"urn:contract:42","dataset":"customers","prep":["trim","nfc","lower"]}

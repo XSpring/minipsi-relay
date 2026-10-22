@@ -1,0 +1,1 @@
+{"session_id":"s-20261020-0001","sender_cc_id":"cc1","receiver_cc_id":"cc2","seq":1,"kind":"hello","payload":{"protocol_version":1,"suite":"minipsi-v1-ed25519-ell2","role":"receiver","hash":"sha256","lambda":40,"nonce":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=","instance_count":1,"software_version":"v0.1.0"}}
