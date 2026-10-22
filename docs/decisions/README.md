@@ -20,6 +20,7 @@ guessing, and inferred points are labelled as inferred.
 | [0006](0006-transcript-digest-in-done.md) | Transcript digest and frame count in Done frames | Accepted (retroactive) | protocol |
 | [0007](0007-strict-configuration-loading.md) | Strict configuration: unknown keys fail, explicit flags override | Accepted (retroactive) | configuration |
 | [0008](0008-static-binary-pinned-supply-chain.md) | Static binary, distroless image and pinned tools and actions | Accepted (retroactive) | build, packaging, CI |
+| [0009](0009-psi-port-layer.md) | A port layer between business services and the PSI core | Proposed | `internal/psi`, services |
 
 ## Format
 

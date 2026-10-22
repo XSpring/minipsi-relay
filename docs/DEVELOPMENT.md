@@ -16,7 +16,7 @@ quickstart), [RUNBOOK.md](../RUNBOOK.md) (deployment and exit-code troubleshooti
 
 | Tool | Version | Needed for | Notes |
 |---|---|---|---|
-| Go | go.mod minimum `go 1.26.0`, no `toolchain` line | everything | With the default `GOTOOLCHAIN=auto`, an older installed `go` switches to go1.26.0 inside the repo (`go version` there prints `go1.26.0`). CI and the Docker build use 1.27.2, see [section 11](#11-pitfalls). |
+| Go | go.mod minimum `go 1.26.0`, no `toolchain` line | everything | With the default `GOTOOLCHAIN=auto`, an older installed `go` switches to go1.26.0 inside the repo (`go version` there prints `go1.26.0`). CI and the Docker build use 1.27.3, see [section 11](#11-pitfalls). |
 | GNU make | any recent | all `make` targets | The recipes use POSIX `sh` syntax. |
 | git | any | `make build` version stamping | `VERSION` and `COMMIT` come from `git describe` / `git rev-parse` (`Makefile:4-5`). |
 | C compiler + cgo | system `gcc` or `clang` | `make race` | The race detector needs cgo; `make build` itself uses `CGO_ENABLED=0`. |
@@ -237,7 +237,7 @@ to the peer in the handshake and written to run reports.
 
 `.github/workflows/ci.yml` runs on pushes to `main`, on every pull request and on manual
 `workflow_dispatch`.
-A newer run on the same ref cancels the older one (`.github/workflows/ci.yml:15-17`, `cancel-in-progress`). All seven jobs run in parallel on `ubuntu-24.04` with Go `1.27.2`
+A newer run on the same ref cancels the older one (`.github/workflows/ci.yml:15-17`, `cancel-in-progress`). All seven jobs run in parallel on `ubuntu-24.04` with Go `1.27.3`
 (`.github/workflows/ci.yml:20`, `GO_VERSION`). Actions are pinned by commit SHA.
 
 | Job | Steps | Timeout | Local equivalent |
@@ -284,8 +284,8 @@ input sets, the receiver's result file, JSON reports, the daemon's `state_dir/re
   supporting Go 1.27 is at least two weeks old (v0.8.2 was released 2026-10-12, `Makefile:16-17`).
   The lint job therefore downloads go1.26.0 at run time. Raising `go` in go.mod to 1.27 or later
   breaks `make lint` until the pin and `STATICCHECK_VERSION` are updated together.
-- **CI Go differs from go.mod.** CI and the Docker build use 1.27.2; go.mod only requires
-  1.26.0, so a local `make build` uses go1.26.0 unless you set `GOTOOLCHAIN=go1.27.2`. govulncheck
+- **CI Go differs from go.mod.** CI and the Docker build use 1.27.3; go.mod only requires
+  1.26.0, so a local `make build` uses go1.26.0 unless you set `GOTOOLCHAIN=go1.27.3`. govulncheck
   results depend on the toolchain's standard library and can differ between the two.
 - **Generated-code drift fails CI.** Any hand edit under `internal/gen`, or a different plugin
   version, makes the `proto` job fail. Regenerate with the pinned tools.
