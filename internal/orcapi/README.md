@@ -243,7 +243,7 @@ POST /v1/messages
 ```
 
 The CC answers 202, or 400 `malformed`, 404 `unknown_session`, 413 `too_large`, 422
-`misrouted` or 503 `unavailable` with a `Problem`.
+`misrouted`, 500 `internal` or 503 `unavailable` with a `Problem`.
 
 ## 4. Abort a session (I3)
 
@@ -337,7 +337,7 @@ Every error response, on both sides, has a `Problem` body (RFC 9457,
 |---|---|---|---|
 | `title` | string | yes | Text of the HTTP status, such as `Not Found`. |
 | `status` | integer | yes | The HTTP status code. |
-| `code` | string | yes | `malformed` (400), `unknown_session` (404), `invalid_state` (409), `too_large` (413), `misrouted` (422) or `unavailable` (503). |
+| `code` | string | yes | `malformed` (400), `unknown_session` (404), `invalid_state` (409), `too_large` (413), `misrouted` (422), `internal` (500) or `unavailable` (503). |
 | `detail` | string | no | Fixed text only, never message values. |
 
 ```json
