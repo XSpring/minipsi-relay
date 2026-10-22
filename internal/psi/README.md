@@ -5,16 +5,16 @@ This folder is the only part of the PSI code that business services should impor
 computed. The decision behind it is recorded in
 [ADR-0009](../../docs/decisions/0009-psi-port-layer.md).
 
-Status: this package contains interfaces and types only. The first implementation, the adapter
-`internal/psi/core` over the existing PSI core (`internal/protocol`), is planned and not written
-yet.
+Status: this package contains interfaces and types only. The adapter `internal/psi/core`
+implements them over the existing PSI core (`internal/protocol`); `core.New` returns the
+`Engine`.
 
 ## In one minute
 
 - `internal/psi` is the **port**: a set of Go interfaces and types, the contract between services
   and any PSI implementation.
-- `internal/psi/core` will be the **adapter**: it implements those interfaces by calling the
-  existing PSI core in `internal/protocol`.
+- `internal/psi/core` is the **adapter**: it implements those interfaces by calling the existing
+  PSI core in `internal/protocol`.
 - Services depend only on the port. To use another PSI implementation later, write another
   adapter; the services do not change.
 
@@ -22,25 +22,25 @@ yet.
 
 ```mermaid
 flowchart TD
-    H["internal/handler (placeholder)<br/>handler.go: HTTP endpoints the ORC calls; gRPC later"] -->|calls| S["internal/service (placeholder)<br/>psi_service.go: Check, Open, Run, Close"]
+    H["internal/handler<br/>handler.go: HTTP endpoints the ORC calls; gRPC later"] -->|calls| S["internal/service (placeholder)<br/>psi_service.go: Check, Open, Run, Close"]
     S -->|"calls Engine, ReceiverSession, SenderSession"| P["internal/psi (port: interfaces and types)"]
     O["internal/service/orc_outbox.go (placeholder)<br/>HTTP client to the orchestrator"] -.->|implements Outbox| P
-    A["internal/psi/core (adapter, planned)"] -.->|implements| P
+    A["internal/psi/core (adapter)"] -.->|implements| P
     A -->|calls| K["internal/protocol (existing PSI core)"]
 ```
 
-Where the code goes. `internal/handler` and `internal/service` exist as placeholders with no code
-yet; the adapter `internal/psi/core` is added in its own branch:
+Where the code goes. `internal/service` is still a placeholder; `internal/handler` and the
+adapter `internal/psi/core` exist:
 
 ```
 internal/
   handler/          HTTP endpoints the ORC calls (gRPC later)
-    handler.go      NewHandler(svc) http.Handler: POST /v1/messages
+    handler.go      NewHandler(svc) http.Handler: the endpoints of internal/orcapi
   service/          business logic
     psi_service.go  PSIService: Check, Open, Run, Close; inbound messages to Deliver
     orc_outbox.go   Outbox implementation: HTTP POST to the ORC
   psi/              port: interfaces and types
-  psi/core/         adapter over internal/protocol
+  psi/core/         adapter over internal/protocol: core.New returns the Engine
 ```
 
 Read the arrows like this:
@@ -202,44 +202,14 @@ func (o *orcOutbox) Post(ctx context.Context, m *psi.Message) error {
 }
 ```
 
-## HTTP handler (planned)
+## HTTP handler
 
-The handler (`internal/handler/handler.go`) declares the endpoints the ORC calls and passes each
-request to the service:
-
-```go
-type Handler struct {
-	svc *service.PSIService // injected by main
-}
-
-// NewHandler returns the HTTP endpoints of this CC.
-func NewHandler(svc *service.PSIService) http.Handler {
-	h := &Handler{svc: svc}
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/messages", h.postMessage)
-	return mux
-}
-
-// postMessage receives one message pushed by the orchestrator.
-func (h *Handler) postMessage(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, psi.MaxMessageBytes)
-	var m psi.Message
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		http.Error(w, "malformed message", http.StatusBadRequest)
-		return
-	}
-	switch err := h.svc.OnMessage(r.Context(), &m); {
-	case err == nil:
-		w.WriteHeader(http.StatusAccepted)
-	case errors.Is(err, psi.ErrUnknownSession):
-		http.Error(w, "unknown session", http.StatusNotFound)
-	case errors.Is(err, psi.ErrMalformed):
-		http.Error(w, "malformed message", http.StatusBadRequest)
-	default:
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}
-}
-```
+The handler (`internal/handler/handler.go`) serves the endpoints that the ORC calls, defined in
+`internal/orcapi`: start, run, abort and delete a session, and receive a message. It decodes and
+checks each request, calls a small `Service` interface that the service implements, and turns
+its errors into RFC 9457 problems. For a message, it passes the decoded `orcapi.Envelope` to the
+service, which checks the CC IDs and hands the session ID, seq, kind and payload unchanged to
+`Engine.Deliver` as a `psi.Message`. See `internal/orcapi/README.md` for the flows.
 
 Go practice for handlers:
 
@@ -247,8 +217,8 @@ Go practice for handlers:
   (`"POST /v1/messages"`). No web framework, so no new dependency.
 - Keep the handler thin: decode the request, call the service, turn errors into status codes
   with `errors.Is`. The PSI logic stays in the service.
-- Limit the body to `psi.MaxMessageBytes` with `http.MaxBytesReader`, and pass `r.Context()`
-  so that a closed connection cancels the work.
+- Limit the body with `http.MaxBytesReader` (`orcapi.MaxEnvelopeBytes` for a message), and pass
+  `r.Context()` so that a closed connection cancels the work.
 - Error responses carry fixed text only, never items or payloads.
 - Inject the service through `NewHandler`, and test the handler with `net/http/httptest`.
 - gRPC later is another handler that calls the same service; the service does not change.
@@ -288,11 +258,11 @@ only after the receiving CC has opened the session. Retries may be added in a la
 
 | Pattern | Where | Why |
 |---|---|---|
-| **Ports and Adapters** (hexagonal architecture) | Port: `internal/psi`. Adapter: `internal/psi/core` (planned). `Outbox` is a port in the other direction: the core calls out, the service implements it. | Services depend on a small, stable contract; the PSI implementation can be replaced without touching them. |
+| **Ports and Adapters** (hexagonal architecture) | Port: `internal/psi`. Adapter: `internal/psi/core`. `Outbox` is a port in the other direction: the core calls out, the service implements it. | Services depend on a small, stable contract; the PSI implementation can be replaced without touching them. |
 | **Service Layer** | `internal/service/psi_service.go`, between the handler (`internal/handler`) and `psi.Engine` | Keeps HTTP or gRPC details in the handler and PSI details behind the port. |
-| **Dependency Injection** (composition root) | `main` creates the adapter (`core.New`, planned) and passes it to the service as a `psi.Engine`; the service passes its `Outbox` to `OpenReceiver` and `OpenSender`. | Only `main` knows which implementation is used; services and tests can use any `Engine`. |
+| **Dependency Injection** (composition root) | `main` creates the adapter (`core.New`) and passes it to the service as a `psi.Engine`; the service passes its `Outbox` to `OpenReceiver` and `OpenSender`. | Only `main` knows which implementation is used; services and tests can use any `Engine`. |
 | **Abstract Factory** | `Engine.OpenReceiver` and `Engine.OpenSender` create `ReceiverSession` and `SenderSession`; the adapter's engine is the concrete factory. | The service never creates a session itself, so it does not depend on the session's concrete type. |
-| **Adapter** | `internal/psi/core` (planned): its receiver and sender wrap `protocol.RunReceiver` and `protocol.RunSender`; its connection turns `Outbox.Post` and `Deliver` into the `protocol.Conn` the core expects. | The existing core stays unchanged; only the adapter knows its types. |
+| **Adapter** | `internal/psi/core`: its receiver and sender wrap `protocol.RunReceiver` and `protocol.RunSender`; its connection turns `Outbox.Post` and `Deliver` into the `protocol.Conn` the core expects. | The existing core stays unchanged; only the adapter knows its types. |
 | **Facade** | `Engine` and `Run` | They hide the handshake, the core configuration, frame chunking and session bookkeeping behind a few simple calls. |
 
 ## Adding another PSI implementation
