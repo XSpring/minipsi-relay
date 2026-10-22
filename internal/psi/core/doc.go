@@ -1,10 +1,21 @@
 // Package core is the adapter between the port layer (internal/psi) and the PSI core in
 // internal/protocol. Services never import it; the composition root wires it in.
 //
-// This part holds the JSON codec and the relay connection. The codec turns a protocol.Frame
-// into the kind and payload of a relay message, and back. The payload carries exactly the
-// fields of the frame, so both sides check the same values as on the direct gRPC transport,
-// including the transcript digest in Done.
+// It has three parts. Engine (New) implements psi.Engine and its sessions. relayConn is the
+// protocol.Conn a session runs on. The JSON codec turns a protocol.Frame into the kind and
+// payload of a relay message, and back. The payload carries exactly the fields of the frame,
+// so both sides check the same values as on the direct gRPC transport, including the
+// transcript digest in Done.
+//
+// # Engine
+//
+// Open registers a session and its relayConn, so that Deliver can queue the peer's first
+// messages before Run. Run drops exact duplicate items, checks the input with
+// protocol.CheckInput, and runs protocol.RunReceiver or protocol.RunSender on one instance.
+// Every failure becomes a *psi.Error. The peer is told to stop with an Abort on every local
+// failure: the core sends it itself, and Run sends it for an input that CheckInput refuses and
+// for a message that Deliver refused; Close sends one when Run never ran. When Run returns,
+// the session ends and its ID is free again.
 //
 // # Relay connection
 //
