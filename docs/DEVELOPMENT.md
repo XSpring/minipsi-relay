@@ -148,7 +148,7 @@ go test -run TestServeValidate -v ./internal/config/
 
 ### Fuzzing
 
-`go test -list '^Fuzz' ./...` lists seven targets:
+`go test -list '^Fuzz' ./...` lists eight targets:
 
 | Target | File |
 |---|---|
@@ -159,6 +159,7 @@ go test -run TestServeValidate -v ./internal/config/
 | `FuzzSenderFrames` | `internal/protocol/fuzz_test.go:90` |
 | `FuzzReceiverFrames` | `internal/protocol/fuzz_test.go:98` |
 | `FuzzDecodeDTO` | `internal/orcapi/orcapi_test.go:283` |
+| `FuzzDecodeFrame` | `internal/psi/core/codec_test.go:211` |
 
 ```bash
 make fuzz-smoke FUZZTIME=30s     # every target, 30s each (CI uses 10s)

@@ -137,6 +137,52 @@ Frames each role sends and receives (a chunk kind may be several messages):
 | sender | `hello`, `sizes_chunk`, `sender_keys`, `output_chunk`, `done` | `hello`, `sizes_chunk`, `poly_chunk`, `done` |
 | either, on an error | `abort` | `abort` |
 
+Order of the frames inside `Run`. Each arrow is one or more envelopes: O1 from the sending CC
+to the ORC, then I5 from the ORC to the other CC.
+
+```mermaid
+sequenceDiagram
+    participant R as CC1 receiver
+    participant S as CC2 sender
+    Note over R: starts building the polynomial P from its items, in the background
+    par both send first, then read
+        R->>S: hello, then sizes_chunk (m: its distinct items plus padding)
+    and
+        S->>R: hello, then sizes_chunk (n: its items, no padding by default)
+    end
+    Note over R,S: each checks the peer's parameters and sizes, then derives the protocol sid
+    par at the same time
+        S->>R: sender_keys (public key K)
+    and
+        R->>S: poly_chunk ... (coefficients of P, in chunks, once P is complete)
+    end
+    Note over R: after it sent all of P and got all sender_keys, computes its own comparison values
+    Note over S: after the whole P, evaluates it at its items with its secret key
+    S->>R: output_chunk ... (values U, shuffled)
+    S->>R: done (frame count and digest)
+    Note over R: after its comparison values and all output_chunk
+    R->>S: done (frame count and digest)
+    Note over R,S: each checks the peer's done
+    Note over R: compares U with its own values: the intersection
+```
+
+- Both CCs send `hello` and `sizes_chunk` before they read the peer's, so neither blocks the
+  other. By default each waits at most 30 s for each frame of the peer's handshake, and 10 min
+  for each frame after it. The 10 min also cover the sender's wait from its last `poly_chunk`
+  to the receiver's `done`: its evaluation and the delivery of all `output_chunk`.
+- The order is enforced: a frame out of this order ends the session with `ERR_PROTOCOL`, for
+  example an `output_chunk` before all `sender_keys`, or a `done` before the peer sent all its
+  data frames.
+- The receiver sends its `done` once it has its comparison values and all `output_chunk`, but
+  before it matches U against them: the matching time depends on the size of the
+  intersection, so the sender cannot learn it from the timing. Neither CC waits for the peer's
+  `done` before sending its own, so the two `done` frames may cross on the way.
+- A CC that fails sends `abort` (best effort), and the peer's `Run` fails when it reads it. A CC
+  stops reading after the peer's `done`, so a later `abort` is not seen: one CC can then report
+  `done` while the other reports `failed`.
+- The fields of each frame and every step of the protocol are described in
+  [docs/BUSINESS_FLOWS.md](../../docs/BUSINESS_FLOWS.md).
+
 ```json
 POST {orc}/v1/messages
 {"session_id":"s-20261020-0001","sender_cc_id":"cc1","receiver_cc_id":"cc2","seq":3,
