@@ -107,8 +107,9 @@ flowchart TD
 
 Third-party libraries enter at the edges only: `spf13/cobra` in `internal/cli`, `yaml.v3`
 in `internal/config`, gRPC and protobuf in `internal/transport` and `internal/gen`,
-`filippo.io/edwards25519` in the curve and field packages, and `tuneinsight/lattigo/v6` in
-`internal/rns` only.
+`filippo.io/edwards25519` in the curve and field packages, `tuneinsight/lattigo/v6` in
+`internal/rns` only, and `golang.org/x/text` (Unicode NFC for the relay prep step `nfc`) in
+`internal/service`.
 
 ## Module responsibilities
 
