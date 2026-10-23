@@ -4,3 +4,4 @@ certs/
 *.key
 report*.json
 .git/
+.env
