@@ -107,8 +107,9 @@ flowchart TD
 
 Third-party libraries enter at the edges only: `spf13/cobra` in `internal/cli`, `yaml.v3`
 in `internal/config`, gRPC and protobuf in `internal/transport` and `internal/gen`,
-`filippo.io/edwards25519` in the curve and field packages, and `tuneinsight/lattigo/v6` in
-`internal/rns` only.
+`filippo.io/edwards25519` in the curve and field packages, `tuneinsight/lattigo/v6` in
+`internal/rns` only, and `golang.org/x/text` (Unicode NFC for the relay prep step `nfc`) in
+`internal/service`.
 
 ## Module responsibilities
 
@@ -119,6 +120,7 @@ in `internal/config`, gRPC and protobuf in `internal/transport` and `internal/ge
 | `internal/config` | Party and daemon configuration: defaults, strict YAML, flag overlay, validation | `Config` `internal/config/config.go:21`, `Serve` `internal/config/serve.go:18` |
 | `internal/itemio` | Read input sets (lines or CSV, per-instance dedup), write results atomically | `Input` `internal/itemio/itemio.go:41`, `WriteResult` `internal/itemio/itemio.go:231` |
 | `internal/psi` | Port layer that business services import instead of the PSI core; interfaces and types only, standard library only (ADR-0009) | `Engine` `internal/psi/psi.go:31`, `Message` `internal/psi/message.go:18`, `Error` `internal/psi/errors.go:49` |
+| `internal/service` | Business logic of a CC in relay mode: loads and prepares the data, runs the session through `psi.Engine`, keeps each session's state with a TTL, reports to the ORC and posts PSI messages to it; implements `handler.Service` | `PSIService` `internal/service/psi_service.go:59`, `orcClient` `internal/service/orc_outbox.go:23`, `ORCFromEnv` `internal/service/env.go:24` |
 | `internal/orcapi` | DTOs, endpoints and validation of the HTTP API between a CC and the orchestrator in relay mode (ADR-0010); standard library only | `StartSessionRequest` `internal/orcapi/control.go:29`, `Envelope` `internal/orcapi/relay.go:13`, `StatusReport` `internal/orcapi/status.go:39` |
 | `internal/report` | JSON run report with no item data | `Report` `internal/report/report.go:14` |
 | `internal/devcerts` | Throw-away X.509 CA and leaves for tests, `certs dev` and `--dev` | `EnsureDev` `internal/devcerts/devpki.go:50`, `IsLoopback` `internal/devcerts/devpki.go:182` |

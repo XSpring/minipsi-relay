@@ -274,6 +274,11 @@ POST /v1/sessions/s-20261020-0001/abort
 {"reason":"peer_rejected"}
 ```
 
+Aborting a session that is ready closes it: the CC posts one O1 `abort` envelope (`seq` 1) so
+that the other CC stops waiting, and reports nothing. The CC does the same, without an I3, when
+a ready session waits longer than its TTL for I2 (10 minutes by default). The ORC may drop that
+envelope when the other CC answers 404.
+
 ## 5. Delete a session (I4)
 
 After the session ended, the ORC asks the CC to remove what it kept for the session.
@@ -292,6 +297,9 @@ sequenceDiagram
 ```
 
 I4 has no body.
+
+The CC keeps an ended session for its TTL (10 minutes by default) and then removes it by
+itself, so an I4 that comes later gets 404 `unknown_session`.
 
 ## A whole session
 

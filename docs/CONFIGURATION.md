@@ -266,6 +266,13 @@ Identical messages are reported once (`internal/config/serve.go:208-222`, `dedup
 | `XDG_STATE_HOME` | `--dev` / `tls.dev` | If `MINIPSI_DEV_PKI` is unset, the PKI lives in `$XDG_STATE_HOME/minipsi/dev-pki`, else in `~/.local/state/minipsi/dev-pki` (`internal/devcerts/devpki.go:35-42`, `XDG_STATE_HOME`). |
 | `MINIPSI_I_UNDERSTAND_INSECURE` | `--insecure-dev` / `tls.insecure_dev` | Must be exactly `1`; otherwise `transport: plaintext mode requires MINIPSI_I_UNDERSTAND_INSECURE=1` and exit 1 (`internal/transport/transport.go:93-95`, `InsecureEnv`). |
 | `GOMEMLIMIT` | Go runtime | Used only when `memory_limit` / `--memory-limit` is not set (section 2). |
+| `MINIPSI_CC_ID` | relay mode (`service.ORCFromEnv`) | ID of this CC, as the orchestrator knows it; 1 to 128 ASCII letters, digits, `-`, `_`, `.` or `:`, starting with a letter or digit. Required (`internal/service/env.go`). |
+| `MINIPSI_ORC_URL` | relay mode (`service.ORCFromEnv`) | Base URL of the orchestrator, `http` or `https` with a host and no query or fragment; it may have a path prefix. Required (`internal/service/env.go`). |
+
+The two relay variables can live in a `.env` file (see `.env.example`; never commit `.env`).
+minipsi does not read the file itself: load it with `set -a; . ./.env; set +a`,
+`docker run --env-file .env` or systemd's `EnvironmentFile=`. Relay mode is not wired into the
+CLI yet.
 
 `MINIPSI_LARGE`, `MINIPSI_BACKEND` and `MINIPSI_CACHE_MB` are read only by a test; see
 [DEVELOPMENT.md](DEVELOPMENT.md#large-scale-test-environment-gated). No other environment

@@ -189,8 +189,9 @@ Protocol-level timeouts sit above the transport: `--handshake-timeout` (30 s per
 | `github.com/spf13/cobra` | v1.10.2 (`go.mod:7`, `cobra`) | command tree | `internal/cli/root.go:12` (`cobra`) |
 | `github.com/spf13/pflag` | v1.0.10 (`go.mod:8`, `pflag`) | flag binding | `internal/cli/party.go:22` (`pflag`) |
 | `gopkg.in/yaml.v3` | v3.0.1 (`go.mod:31`, `yaml`) | config files | `internal/config/config.go:15` (`yaml`) |
-| `google.golang.org/grpc` | v1.84.0 (`go.mod:9`, `grpc`) | transport | `internal/transport/transport.go:22` (`grpc`) |
-| `google.golang.org/protobuf` | v1.36.12 (`go.mod:10`, `protobuf`) | generated messages | `internal/gen/minipsiv1/psi.pb.go` |
+| `google.golang.org/grpc` | v1.84.0 (`go.mod:10`, `grpc`) | transport | `internal/transport/transport.go:22` (`grpc`) |
+| `google.golang.org/protobuf` | v1.36.12 (`go.mod:11`, `protobuf`) | generated messages | `internal/gen/minipsiv1/psi.pb.go` |
+| `golang.org/x/text` | v0.42.0 (`go.mod:9`, `text`) | Unicode NFC of the relay prep step `nfc` | `internal/service/prep.go:9` (`norm`) |
 
 The NTT backend is a local choice (`--ntt-backend native|lattigo`, default `native`); peers may use
 different backends (`internal/rns/rns.go:282`, `NewBackend`). Indirect modules and their provenance

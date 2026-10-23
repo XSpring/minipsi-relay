@@ -22,23 +22,26 @@ yet.
 
 ```mermaid
 flowchart TD
-    H["internal/handler (placeholder)<br/>handler.go: HTTP endpoints the ORC calls; gRPC later"] -->|calls| S["internal/service (placeholder)<br/>psi_service.go: Check, Open, Run, Close"]
+    H["internal/handler<br/>handler.go: HTTP endpoints the ORC calls; gRPC later"] -->|calls| S["internal/service<br/>psi_service.go: Check, Open, Run, Close"]
     S -->|"calls Engine, ReceiverSession, SenderSession"| P["internal/psi (port: interfaces and types)"]
-    O["internal/service/orc_outbox.go (placeholder)<br/>HTTP client to the orchestrator"] -.->|implements Outbox| P
+    O["internal/service/orc_outbox.go<br/>HTTP client to the orchestrator"] -.->|implements Outbox| P
     A["internal/psi/core (adapter, planned)"] -.->|implements| P
     A -->|calls| K["internal/protocol (existing PSI core)"]
 ```
 
-Where the code goes. `internal/handler` and `internal/service` exist as placeholders with no code
-yet; the adapter `internal/psi/core` is added in its own branch:
+Where the code goes. `internal/handler` and `internal/service` exist; the adapter
+`internal/psi/core` is added in its own branch:
 
 ```
 internal/
   handler/          HTTP endpoints the ORC calls (gRPC later)
     handler.go      NewHandler(svc) http.Handler: POST /v1/messages
   service/          business logic
-    psi_service.go  PSIService: Check, Open, Run, Close; inbound messages to Deliver
-    orc_outbox.go   Outbox implementation: HTTP POST to the ORC
+    psi_service.go  PSIService: the handler's Service; Check, Open, Run, Close; Deliver
+    orc_outbox.go   Outbox implementation and status reports: HTTP POST to the ORC
+    registry.go     session states, kept in memory with a TTL
+    prep.go         prep steps (trim, nfc, lower) applied to the dataset values
+    env.go          MINIPSI_CC_ID and MINIPSI_ORC_URL
   psi/              port: interfaces and types
   psi/core/         adapter over internal/protocol
 ```
@@ -131,7 +134,9 @@ Steps for one party:
 Meanwhile, the HTTP handler (`internal/handler`) that receives the ORC's POSTs passes each
 message unchanged to the service, which hands it to `Engine.Deliver`.
 
-Example, the service (`internal/service/psi_service.go` and `orc_outbox.go`):
+A simplified example of the service. The real one, in `internal/service/psi_service.go` and
+`orc_outbox.go`, follows the same steps and adds the session states, the TTL and the status
+reports of `internal/orcapi`:
 
 ```go
 type PSIService struct {
